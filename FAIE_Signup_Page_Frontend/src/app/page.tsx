@@ -200,7 +200,7 @@ export default function Home() {
               What is FAIE?
             </h2>
             <p className="text-xl max-w-3xl mx-auto" style={{ color: '#423e3c' }}>
-              The Foundation for AI Excellence (FAIE) is an intelligent system that creates 
+              The Faculty Advisor for Industry Engagement (FAIE) is an intelligent system that creates 
               personalized Industry Engagement Plans (IEPs) tailored to your research expertise.
             </p>
           </div>
@@ -571,8 +571,8 @@ export default function Home() {
                 <h4 className="font-semibold text-white mb-4">Contact</h4>
                 <div className="space-y-2 text-sm text-gray-400">
                   <p className="font-medium text-white">John Sweet</p>
-                  <p>Innovation Evangelist & IP Advisor</p>
-                  <p>Research Office</p>
+                  <p>AI Strategy & Innovation</p>
+                  <p>Division of Research & Innovation</p>
                   <p>Oregon State University</p>
                   <a href="mailto:john.sweet@oregonstate.edu" className="text-[#D73F09] hover:underline flex items-center gap-1">
                     john.sweet@oregonstate.edu <ExternalLink className="w-3 h-3" />
@@ -587,7 +587,7 @@ export default function Home() {
                     Oregon State University <ExternalLink className="w-3 h-3" />
                   </a>
                   <a href="https://research.oregonstate.edu" className="text-gray-400 hover:text-[#D73F09] transition-colors flex items-center gap-1">
-                    Research Office <ExternalLink className="w-3 h-3" />
+                    Division of Research & Innovation <ExternalLink className="w-3 h-3" />
                   </a>
                   <a href="#about" className="text-gray-400 hover:text-[#D73F09] transition-colors block">About FAIE</a>
                   <a href="#register" className="text-gray-400 hover:text-[#D73F09] transition-colors block">Register for Workshop</a>

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FAIE Signup Site — a Next.js 16 landing page for registering OSU faculty for the Foundation for AI Excellence (FAIE) Workshop. Hosted on Vercel. Form submissions are sent to an n8n cloud webhook (TBD).
+FAIE Signup Site — a Next.js 16 landing page for registering OSU faculty for the Faculty Advisor for Industry Engagement (FAIE) Workshop. Hosted on Vercel. Form submissions are sent to an n8n cloud webhook (TBD).
 
 ### Repo structure
 

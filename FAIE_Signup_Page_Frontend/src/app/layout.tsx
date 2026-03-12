@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   title: "FAIE Workshop - Transform Research into Industry Impact | Oregon State University",
   description: "Join the FAIE Workshop at Oregon State University. Learn how AI-powered Industry Engagement Plans can connect your research with industry partners. Register now for upcoming sessions.",
   keywords: ["FAIE", "Industry Engagement", "Oregon State University", "Faculty Workshop", "Research Commercialization", "Industry Partnerships", "Technology Transfer"],
-  authors: [{ name: "Oregon State University Research Office" }],
+  authors: [{ name: "Oregon State University Division of Research & Innovation" }],
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>",
   },
