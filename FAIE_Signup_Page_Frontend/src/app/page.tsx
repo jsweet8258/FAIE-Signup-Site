@@ -611,7 +611,7 @@ export default function Home() {
                 <span className="text-white/40">|</span>
                 <a href="https://oregonstate.edu/accessibility" className="hover:text-white transition-colors">Accessibility</a>
                 <span className="text-white/40">|</span>
-                <a href="https://oregonstate.edu/privacy" className="hover:text-white transition-colors">Privacy</a>
+                <a href="https://oregonstate.edu/official-web-disclaimer" className="hover:text-white transition-colors">Privacy</a>
               </div>
             </div>
           </div>
