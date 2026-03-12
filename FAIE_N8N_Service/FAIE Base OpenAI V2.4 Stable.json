@@ -1,0 +1,3721 @@
+{
+  "name": "FAIE Base OpenAI V2.4 Stable",
+  "nodes": [
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "id-1",
+                    "leftValue": "={{ $json.extension }}",
+                    "rightValue": "pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PDF"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "id-2",
+                    "leftValue": "={{ $json.extension }}",
+                    "rightValue": "docx",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "DOCX"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "ignoreCase": true,
+          "renameFallbackOutput": "Misc"
+        }
+      },
+      "id": "8d3d6dd1-a339-4700-bf82-193db85ffe67",
+      "name": "Route by File Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -6896,
+        -2176
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "8f039074-0440-4b4e-b5e6-7420b3190055",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -6672,
+        -2464
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "eebef212-7bfa-4df3-a703-38ab7e3ddb02",
+      "name": "Extract Misc File Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -6672,
+        -1824
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        -6480,
+        -2272
+      ],
+      "id": "0f6b26ed-b651-44f3-acdf-176e6351cf69",
+      "name": "Compression"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fan out every decompressed file from every DOCX\n// and carry over the parent DOCX metadata.\n\nconst out = [];\n\nfor (const [index, item] of $input.all().entries()) {\n  const bins = item.binary || {};\n  const meta = item.json || {};\n\n  for (const [key, bin] of Object.entries(bins)) {\n    const dir = (bin.directory || '').replace(/^[./]+/, '');\n    const name = bin.fileName || '';\n    const fullPath = (dir ? `${dir}/` : '') + name;\n\n    out.push({\n      json: {\n        // preserve whatever Compression put here\n        ...meta,\n\n        // track which original DOCX this came from\n        sourceIndex: index,\n        sourceFileName:\n          meta.filename || meta.fileName || bin.fileName || null,\n\n        // per-file info inside the ZIP\n        binKey: key,\n        fileName: name,\n        directory: dir,\n        fullPath,\n      },\n      binary: {\n        data: bin,\n      },\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6304,
+        -2272
+      ],
+      "id": "e0f7f401-28e0-4835-a694-c819f683db06",
+      "name": "Fan out each extracted file"
+    },
+    {
+      "parameters": {
+        "jsCode": "const keep = [];\n\nfor (const item of $input.all()) {\n  const p = (item.json.fullPath || '').toLowerCase();\n  if (p.endsWith('word/document.xml')) {\n    keep.push(item);   // return the whole item (json + binary) as-is\n  }\n}\n\nif (!keep.length) {\n  throw new Error('word/document.xml not found in DOCX archive');\n}\n\nreturn keep;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6672,
+        -2048
+      ],
+      "id": "fec41a31-5cb2-4886-b33f-8a462e55d306",
+      "name": "Keep only word/document.xml"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Get XML string from the Extract From File node\nconst xml = $json.xml || $json.data || '';\n\n// Basic XML → text conversion, preserving spacing\nlet text = xml\n  .replace(/<w:p[^>]*>/g, '\\n')      // paragraph tags → newline\n  .replace(/<w:br[^>]*\\/>/g, '\\n')   // explicit breaks → newline\n  .replace(/<[^>]+>/g, '')           // strip all remaining tags\n  .replace(/&amp;/g, '&')\n  .replace(/&lt;/g, '<')\n  .replace(/&gt;/g, '>')\n  .replace(/&quot;/g, '\"')\n  .replace(/&apos;/g, \"'\")\n  .replace(/\\s+\\n/g, '\\n')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nconst snippet = text.slice(0, 1200);\n\n// Pull metadata back from Keep only word/document.xml\n// This guarantees sourceFileName/filename survive even if Extract changed JSON.\nconst meta = $('Keep only word/document.xml').itemMatching($itemIndex).json || {};\n\nreturn {\n  json: {\n    ...meta,        // filename, extension, directory, sourceFileName, etc.\n    text,\n    snippet\n  },\n  binary: $('Keep only word/document.xml').itemMatching($itemIndex).binary\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6304,
+        -2048
+      ],
+      "id": "ed4e5ea3-be28-48b4-825a-8bf3f44e1c71",
+      "name": "Convert XML to text"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Ensure the Compression node recognizes this as a zip archive\nconst bin = { ...( $binary?.data ?? {} ) };\n\n// If no fileName exists, invent one\nconst current = bin.fileName || 'doc.docx';\nbin.fileName = current.replace(/\\.docx$/i, '.zip');\nbin.fileExtension = 'zip';        // important for Decompress quirks\n\nreturn { json: { ...$json }, binary: { data: bin } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6672,
+        -2272
+      ],
+      "id": "1ed6d827-dcc0-4923-8298-d82575ccadc8",
+      "name": "Rename DOCX binary to ZIP"
+    },
+    {
+      "parameters": {
+        "operation": "xml",
+        "destinationKey": "xml",
+        "options": {}
+      },
+      "id": "71d2e75d-693f-4b8c-8491-9d659843b275",
+      "name": "Extract from Docx1",
+      "type": "n8n-nodes-base.extractFromFile",
+      "position": [
+        -6480,
+        -2048
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-5-NANO"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You classify academic input files for the FAIE DP.0 checklist.\n\nPossible labels (exactly one):\n\n\"Research_Area_s\" – topical keywords, domain focus, SDG or industry tags.\n\n\"Faculty_Bio\" – background, appointments, affiliations, career stage.\n\n\"Recent_Publications\" – representative research outputs (papers, reports) showing depth, novelty, impact.\n\n\"Faculty_Website\" – profile or group website with summaries, contact info, lab or group details.\n\n\"Industry_Verticals\" – companies engaged or avoided, areas of industry interest.\n\n\"Engagement_Goals\" – desired outcomes such as joint research, licensing, internships, co-development, internships, consulting.\n\n\"Other\" – if none of the above are a good fit.\n\nOutput STRICT JSON:\n{\"filename\": \"<original filename>\",\n \"label\": \"<one of the labels above>\",\n \"confidence\": <number between 0 and 1>}\n\n<example>\n{\n  \"filename\": \"CV_Feng.pdf\",\n  \"label\": \"Faculty_Bio\",\n  \"confidence\": 0.92\n}\n</example>",
+              "role": "system"
+            },
+            {
+              "content": "=Document title: {{ $json.title || '(no title)' }}\nFile name: {{ $json.filename }}\nSource type: {{ $json.sourceType }}\n\nContent snippet:\n{{ $json.snippet || ($json.text || '').slice(0, 1400) }}`"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -5792,
+        -2320
+      ],
+      "id": "817f07b6-a9ac-4598-bef9-621eed37afc6",
+      "name": "DP0 Classifier",
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Run Once for All Items\n\nlet results = [];\n\nfor (const item of items) {\n  const binaries = item.binary || {};\n  for (const [key, fileData] of Object.entries(binaries)) {\n    if (!fileData) continue;\n\n    const fileName = fileData.fileName || '';\n    const extension = (fileData.fileExtension || fileName.split('.').pop() || '').toLowerCase();\n\n    results.push({\n      json: {\n        filename: fileName,\n        extension,                 // e.g. 'pdf', 'docx'\n        mimetype: fileData.mimeType,\n        size: fileData.fileSize,\n        binaryKey: key             // e.g. 'File_0', 'File_1' if you ever need it\n      },\n      binary: {\n        data: fileData             // always expose file as binary.data\n      },\n    });\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7104,
+        -2160
+      ],
+      "id": "31993dc7-7016-45c1-b22a-addfe63f3232",
+      "name": "Split binaries into one item per file"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Normalize Form Meta').first().json.form.email }}",
+        "subject": "FAIE Cycle Notification: Missing Items",
+        "message": "=Dear Faculty Member,\n\nWe are missing documents essential for the FAIE cycle. Please send the required documents in the submission portal so we can proceed.\n\nCurrent checklist status:\n{{ JSON.stringify($json.checklist, null, 2) }}\n\nOptional but preferred documents (not required to proceed):\n- Faculty_Website\n- Industry_Verticals\n- Engagement_Goals\n\nThese optional items help improve the quality and relevance of industry matches and outreach but are not mandatory.\n\nThank you,\nFAIE Team\n",
+        "options": {
+          "replyTo": ""
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -3728,
+        -2848
+      ],
+      "id": "9564c377-d3ec-4126-9480-bc6bee02be0f",
+      "name": "Send a message",
+      "webhookId": "989c9e27-cc92-45eb-8845-9b4a045c2d79",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1PjdDfo0Owcti7GT",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "434f955a-527f-4012-85fe-09c5fe97be8b",
+              "name": "Email",
+              "value": "={{ $json.Email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -7104,
+        -2320
+      ],
+      "id": "18c9e1fd-b345-4cc8-8616-b0ea3c1e20ef",
+      "name": "Faculty Email"
+    },
+    {
+      "parameters": {
+        "content": "## DP 1\nFaculty Profile Sheet\n— 5–7 sentence, industry-legible faculty profile.",
+        "height": 128,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3584,
+        -2272
+      ],
+      "typeVersion": 1,
+      "id": "f700dc7b-45a8-4e32-bf24-816ff01453c4",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## DP 2\nResearch Focus Summary\n— 3–5 distinct focus areas; each has a short title, 1–2 keywords, and one lay sentence. ",
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3584,
+        -1840
+      ],
+      "typeVersion": 1,
+      "id": "cea5e159-9d58-4c45-a4c7-cca902668cad",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## DP 3\nClean Publication Highlights\n— 3–5 flagship items (Year | Journal | ≤16-word topic | Link). CSV-ready. ",
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3584,
+        -1392
+      ],
+      "typeVersion": 1,
+      "id": "76509773-e2ed-4087-9c3f-e6994e239408",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## DP 4\nFaculty Stated Preferences (Company Interests & Engagement Goals)",
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3584,
+        -992
+      ],
+      "typeVersion": 1,
+      "id": "dc221e51-5ee7-494d-b255-27ba34810ce5",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "# Step 1\n## Discovery & Planning – Data Preparation & Digestion ",
+        "height": 112,
+        "width": 624
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3904,
+        -2464
+      ],
+      "typeVersion": 1,
+      "id": "8e1f3587-cc2c-49d2-9d86-a43882ce0a31",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nCV file; faculty website URL.",
+        "height": 80
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3840,
+        -2272
+      ],
+      "typeVersion": 1,
+      "id": "5fd1cff2-6d91-465c-a0c7-d0f4469c1e5e",
+      "name": "Sticky Note27"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nPublication titles and abstracts or links; research statements or grant summaries (optional). ",
+        "height": 112
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3840,
+        -1840
+      ],
+      "typeVersion": 1,
+      "id": "65226307-c471-46c6-b923-f90d44b1d8e5",
+      "name": "Sticky Note28"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nFull publication list or bibliography links.",
+        "height": 112
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3840,
+        -1392
+      ],
+      "typeVersion": 1,
+      "id": "a1fb27f7-7253-4867-bc9a-55921d4ac98e",
+      "name": "Sticky Note29"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nEmails or notes that mention company interests or aversions; desired outcomes. ",
+        "height": 128
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3840,
+        -992
+      ],
+      "typeVersion": 1,
+      "id": "363bfbfd-fe41-41cb-b124-9964cb0c0c12",
+      "name": "Sticky Note30"
+    },
+    {
+      "parameters": {
+        "content": "## DP 5\n— One-paragraph role definition; plus a brief mapping sectors, needs/drivers, watchlist, TRLs/evidence norms, engagement modes, and visibility venues. \n",
+        "height": 192,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3584,
+        -576
+      ],
+      "typeVersion": 1,
+      "id": "ce2de383-957d-45fb-84fc-c3372ce27799",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nDP.1, DP.2, DP.3, DP.4.",
+        "height": 80
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3840,
+        -576
+      ],
+      "typeVersion": 1,
+      "id": "4e840773-f4c9-4212-ac3c-6f988daecf5d",
+      "name": "Sticky Note31"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3.2\nIndustry Vertical Mapping",
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2256,
+        -1840
+      ],
+      "typeVersion": 1,
+      "id": "3339046f-1a2c-456f-874d-956145ba0fe4",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3.3\nCompany Match List",
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2256,
+        -1392
+      ],
+      "typeVersion": 1,
+      "id": "5e953345-08e3-4f68-b632-ea7864874801",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3.4\nOutreach Message Draft",
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2256,
+        -992
+      ],
+      "typeVersion": 1,
+      "id": "a04a72e3-571b-4b36-ae9d-64d3761b5853",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nDP.1 – Faculty Profile Sheet; DP.2 – Research Focus Summary; DP.5 – Deep Research Brief",
+        "height": 128
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2512,
+        -2272
+      ],
+      "typeVersion": 1,
+      "id": "6aca7ab1-8414-456b-9be0-ccd2d8c23dfa",
+      "name": "Sticky Note32"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nDP.2 – Research Focus Summary; DP.4 – Preferences; DP.5 watchlist entities (optional). ",
+        "height": 144
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2512,
+        -1392
+      ],
+      "typeVersion": 1,
+      "id": "43ddef66-b2be-4685-b815-605f216dac79",
+      "name": "Sticky Note34"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nS3.1 – Industry-Facing Summary; one selected company row from S3.3; desired outcome from DP.4.",
+        "height": 144
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2512,
+        -992
+      ],
+      "typeVersion": 1,
+      "id": "c73403b5-c792-411e-bda2-8fe15f22417d",
+      "name": "Sticky Note35"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3.5\nEvent and Visibility Recommendations",
+        "height": 176,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2256,
+        -576
+      ],
+      "typeVersion": 1,
+      "id": "ee6771b1-d5de-4738-8653-bd1c8f14cbdb",
+      "name": "Sticky Note11"
+    },
+    {
+      "parameters": {
+        "content": "## Search Task",
+        "height": 112
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2768,
+        -576
+      ],
+      "typeVersion": 1,
+      "id": "0b3b7a70-da90-434e-9601-312f63cef8e9",
+      "name": "Sticky Note23"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3.1\nFaculty Summary (Industry-Facing Value Summary)",
+        "height": 128,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2256,
+        -2272
+      ],
+      "typeVersion": 1,
+      "id": "a12096e6-ebc6-49a4-a0dc-eabe54bd61f6",
+      "name": "Sticky Note12"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nDP.2 – Research Focus Summary; DP.5 – Deep Research Brief. ",
+        "height": 128
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2512,
+        -1840
+      ],
+      "typeVersion": 1,
+      "id": "277017ee-9aa6-4821-a0b7-3d159a470575",
+      "name": "Sticky Note33"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3.6\nWeb Presence Optimization",
+        "height": 144,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2256,
+        -144
+      ],
+      "typeVersion": 1,
+      "id": "09cc6522-b35b-4a1b-b6cc-55e7e36ea54e",
+      "name": "Sticky Note13"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nCurrent website URL; copied web text for relevant page sections; S3.1 – Industry-Facing Summary.",
+        "height": 144
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2512,
+        -144
+      ],
+      "typeVersion": 1,
+      "id": "c882b211-b2eb-4a61-bc95-40f035b285f4",
+      "name": "Sticky Note37"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 3.7\nIEP Summary Compilation",
+        "height": 144,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2256,
+        272
+      ],
+      "typeVersion": 1,
+      "id": "afda8bbc-3c2f-402b-9c05-58271eb09bf8",
+      "name": "Sticky Note14"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nS3.1–S3.6 outputs; DP.4 – Preferences.",
+        "height": 144
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2512,
+        272
+      ],
+      "typeVersion": 1,
+      "id": "a8facc2f-87a1-4b6e-8ef3-eabba2c9bff2",
+      "name": "Sticky Note38"
+    },
+    {
+      "parameters": {
+        "content": "# Step 2\n## FAIE Core Output Execution",
+        "height": 112,
+        "width": 400
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2480,
+        -2464
+      ],
+      "typeVersion": 1,
+      "id": "ceacdbb8-01bf-495a-9843-9798f78131be",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nS3.7 – IEP Summary Sheet; separate S3 artifacts stored in artifacts_s3/ (do not concatenate): "
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1440,
+        -2288
+      ],
+      "typeVersion": 1,
+      "id": "d245b3bf-77ef-404b-a0d3-af4ba23bedd5",
+      "name": "Sticky Note39"
+    },
+    {
+      "parameters": {
+        "content": "## Stage 4\nFinal IEP Assembly & Review",
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1184,
+        -2288
+      ],
+      "typeVersion": 1,
+      "id": "071c9e3e-209b-46f7-95a6-58139f553310",
+      "name": "Sticky Note15"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'DP.1 - Faculty Profile Sheet - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -3248,
+        -2048
+      ],
+      "id": "0ecd92cf-283d-4450-b059-9dda8fd880fd",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'DP.2 – Research Focus Summary - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -3248,
+        -1584
+      ],
+      "id": "9b1b7d14-f780-4946-9c92-53d36725d0b5",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'DP.3 – Clean Publication Highlights - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -3248,
+        -1136
+      ],
+      "id": "1aefbc7e-9788-4dd3-baf7-df03283f7a84",
+      "name": "Convert to File2"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'DP.4 – Preferences - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -3248,
+        -736
+      ],
+      "id": "ece038b9-045c-4295-ac01-ea0d6a0c1c9b",
+      "name": "Convert to File3"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'S3.5 – Visibility Plan - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -3248,
+        -304
+      ],
+      "id": "90ed8bcc-323f-460c-aa22-ff08e1950800",
+      "name": "Convert to File4"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'S3.1 – Industry-Facing Summary - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1936,
+        -2048
+      ],
+      "id": "9be6f701-d7c2-42ea-85da-bcfa34221ff2",
+      "name": "Convert to File5"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'S3.2 – Vertical Map - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1936,
+        -1584
+      ],
+      "id": "24a531aa-603a-4934-89e6-a1ab5f515fc6",
+      "name": "Convert to File6"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "S3_3_Company_Matches_CSV",
+        "options": {
+          "fileName": "={{ 'S3.3 – Company Matches - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1424,
+        -1136
+      ],
+      "id": "ab2e1adc-c1a7-4f81-8414-e2ec2774e04f",
+      "name": "Convert to File7"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "S3_4_Outreach_Pack[0]",
+        "options": {
+          "fileName": "={{ 'S3.4 – Outreach Pack - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1600,
+        -816
+      ],
+      "id": "d9009d80-e79a-42aa-a17e-7459fd3d8584",
+      "name": "Convert to File8"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'S3.5 – Visibility Plan - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1936,
+        -304
+      ],
+      "id": "a3b7a1cb-9940-4842-90a5-4bd8c23f3b1b",
+      "name": "Convert to File9"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'S3.6 – Web Updates - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1936,
+        112
+      ],
+      "id": "8175b383-142a-4908-8c77-c22e1b3e1023",
+      "name": "Convert to File10"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'S3.7 – IEP Summary Sheet - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1936,
+        512
+      ],
+      "id": "6a396966-e0b5-485c-9e0f-b19beefbefb1",
+      "name": "Convert to File11"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output[0].content[0].text",
+        "options": {
+          "fileName": "={{ 'S4 - Final IEP Timeline - ' + $now.toFormat('yyyyLLdd_HHmmss') + '.txt' }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -848,
+        -2032
+      ],
+      "id": "1528ca5a-e997-4223-be39-750c3ba32782",
+      "name": "Convert to File12"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "97a3d5cd-372b-4a25-8b44-54b39803a519",
+              "name": "filename",
+              "value": "={{   $('Split binaries into one item per file')   .itemMatching($itemIndex)    .binary    .data    .fileName }}",
+              "type": "string"
+            },
+            {
+              "id": "b6da78c0-d78d-4b18-ae2a-c3694ee3adb3",
+              "name": "title",
+              "value": "={{ $json.info?.Title || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "4ac4df85-4a19-42bc-804c-f45576a3bd49",
+              "name": "sourceType",
+              "value": "pdf",
+              "type": "string"
+            },
+            {
+              "id": "1480f263-f9fd-46e2-a82d-3866fe6720e1",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "c08bfc71-77ed-4001-936a-0ce5ffbd6bd9",
+              "name": "snippet",
+              "value": "={{ ($json.text || '').slice(0, 1400) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -6096,
+        -2320
+      ],
+      "id": "65bd21ef-3059-47a8-9365-a2f47cf0ec78",
+      "name": "Prepare PDF for DP0"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "97a3d5cd-372b-4a25-8b44-54b39803a519",
+              "name": "filename",
+              "value": "={{\n  $json.sourceFileName           // from Fan out / Keep-only metadata\n  || $json.filename              // if you kept it under this name\n  || $json.fileName              // just in case\n  || $('Split binaries into one item per file')\n        .itemMatching($itemIndex)\n        .binary\n        .data\n        .fileName\n  || ''\n}}\n",
+              "type": "string"
+            },
+            {
+              "id": "b6da78c0-d78d-4b18-ae2a-c3694ee3adb3",
+              "name": "title",
+              "value": "=N/A",
+              "type": "string"
+            },
+            {
+              "id": "4ac4df85-4a19-42bc-804c-f45576a3bd49",
+              "name": "sourceType",
+              "value": "docx",
+              "type": "string"
+            },
+            {
+              "id": "c08bfc71-77ed-4001-936a-0ce5ffbd6bd9",
+              "name": "snippet",
+              "value": "={{ ($json.text || '').slice(0, 1400) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -6096,
+        -2160
+      ],
+      "id": "50420fc1-9974-49c1-8e51-6bd94fe9bde4",
+      "name": "Prepare DOCX for DP"
+    },
+    {
+      "parameters": {
+        "content": "## I will finish this later"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -6752,
+        -1872
+      ],
+      "id": "fbf0b39e-5760-49db-899b-94edfe3a1ca0",
+      "name": "Sticky Note16"
+    },
+    {
+      "parameters": {
+        "content": "## Deep Research Task",
+        "height": 112
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -4096,
+        -576
+      ],
+      "typeVersion": 1,
+      "id": "635f416e-37d3-4479-b415-da86f8c23b3d",
+      "name": "Sticky Note22"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: DP.1 – Faculty Profile Sheet]\n\nTask:\nFrom the faculty CV / bio and website content, write a 5–7 sentence\nindustry-legible profile for the faculty member.\n\nRequirements:\n- Audience: industry partners, R&D leaders, innovation / corporate development.\n- Start with 1–2 sentences stating field, role, and core expertise.\n- Highlight 2–3 concrete contribution areas, methods, or platforms.\n- Mention 1–2 types of industry problems or applications their work can address.\n- Avoid citation formatting and long lists of awards.\n- No bullets – write as one continuous paragraph.\n- Do not invent new outcomes, roles, or affiliations.\n\nTitle:\nDP.1 – Faculty Profile Sheet\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<Faculty_Name>\n{{ $json.faculty?.full_name || '' }}\n</Faculty_Name>\n\n<CV_and_Faculty_Bio>\n{{\n  ($json.faieInputs?.Faculty_Bio || [])\n    .map(d => d.text || d.snippet || '')\n    .join('\\n\\n---\\n\\n')\n}}\n</CV_and_Faculty_Bio>\n\n<Faculty_Website>\n{{\n  ($json.faieInputs?.Faculty_Website || [])\n    .map(d => d.text || d.snippet || '')\n    .join('\\n\\n---\\n\\n')\n}}\n</Faculty_Website>\n\n[OUTPUT]\n\nWrite “DP.1 – Faculty Profile Sheet” as a single paragraph following the system instructions.\nIf important information appears to be missing, note this briefly in an\n“Assumptions and Gaps” sentence at the end.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        -2128
+      ],
+      "id": "dfb1e26b-0bd5-409a-9e63-5c6bfed19d0a",
+      "name": "DP.1",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Required Inputs:\nDP.2 – Research Focus Summary; DP.5 – Deep Research Brief; constraints (time, travel, budget) if any.",
+        "height": 144
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2512,
+        -576
+      ],
+      "typeVersion": 1,
+      "id": "a79c0f4d-8f95-41fc-8366-31ad6802f2b1",
+      "name": "Sticky Note36"
+    },
+    {
+      "parameters": {
+        "content": "0 = Good output\n1 = Bad output",
+        "height": 80,
+        "width": 150
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -4192,
+        -2240
+      ],
+      "typeVersion": 1,
+      "id": "910bc497-67c1-4160-bac3-4956bc4ffded",
+      "name": "Sticky Note17"
+    },
+    {
+      "parameters": {
+        "content": "## Add step\n- 20 company limit on s3.3\n- Format s3.3 step to allow for list loop"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2016,
+        -1392
+      ],
+      "id": "fd522dfe-bbbd-4fbc-954a-978c77921c18",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -848,
+        -1856
+      ],
+      "id": "a98b1efb-4115-4512-a9ca-5fd7fd645c34",
+      "name": "artifacts_dp"
+    },
+    {
+      "parameters": {
+        "numberInputs": 7
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -848,
+        -1520
+      ],
+      "id": "1dfc913c-21e4-4ad3-ade8-fcbd7ab6ba8c",
+      "name": "artifacts_s3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3888,
+        -2848
+      ],
+      "id": "65d5b6b6-42f1-4d6f-8ed5-38e662fe4fd7",
+      "name": "Merge12"
+    },
+    {
+      "parameters": {
+        "content": "## Search Task",
+        "height": 112
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2768,
+        -1392
+      ],
+      "typeVersion": 1,
+      "id": "e67d03be-f737-4e36-a929-3263aa664189",
+      "name": "Sticky Note24"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assume input is the S3.3 node output\nconst companies = $input.first().json.output[0].content[0].text.companies || [];\n\nreturn companies.map(c => ({\n  json: {\n    company: c.company,\n    why_it_aligns: c.why_it_aligns,\n    entry_point: c.entry_point,\n    match_type: c.match_type,\n  },\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1952,
+        -1216
+      ],
+      "id": "fdd5e934-9b88-4dd8-993d-08664980e419",
+      "name": "Split out companies"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n\n[Step: DP.2 – Research Focus Summary]\n\nTask:\nSummarize the faculty member's research into 3–5 distinct focus areas.\n\nRequirements:\n- Each focus area must be distinct – no overlap or duplicates.\n- For each focus area, provide:\n  - A short name with 1–2 key technical keywords, and\n  - One clear lay sentence (max ~25 words) explaining what they work on or enable.\n- Focus on the most important, recurring themes in the publications and research text.\n- Do not list all papers; abstract to themes.\n\nTitle:\nDP.2 – Research Focus Summary\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<Recent_Publications>\n{{\n  ($json.faieInputs?.Recent_Publications || [])\n    .map(d => d.text || d.snippet || '')\n    .join('\\n\\n---\\n\\n')\n}}\n</Recent_Publications>\n\n<Inferred_Research_Areas>\n{{ JSON.stringify($json.faculty?.research_areas || [], null, 2) }}\n</Inferred_Research_Areas>\n\n\n<CV_and_Faculty_Bio>\n{{\n  ($json.faieInputs?.Faculty_Bio || [])\n    .map(d => d.text || d.snippet || '')\n    .join('\\n\\n---\\n\\n')\n}}\n</CV_and_Faculty_Bio>\n[OUTPUT]\n\nWrite “DP.2 – Research Focus Summary” as:\n\n- A short 2–3 sentence overview paragraph; then\n- A bullet list of 3–5 focus areas.\n  Each bullet should be in the form:\n  Focus Area Name (1–2 keywords) – one lay sentence description.\n\nEnd with a brief “Assumptions and Gaps” line only if you had to infer or if inputs were weak."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        -1664
+      ],
+      "id": "c9bf359d-ba82-44e9-9aea-e8c6a7e322a5",
+      "name": "DP.2",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: DP.3 – Clean Publication Highlights]\n\nTask:\nSelect 3–5 flagship publications that best showcase the faculty member's\nresearch for industry audiences, and present them in a clean table.\n\nRequirements:\n- Choose items that align with the focus areas in DP.2.\n- Prefer recent, impactful work; avoid obscure or highly duplicative items.\n- For each selected publication include:\n  - Year (4 digits)\n  - Journal or venue (short name)\n  - A 1-line topic summary (≤ 16 words) in plain English\n  - A link or DOI if present in the input, otherwise leave blank.\n- Do NOT fabricate venues, years, or links.\n\nTitle:\nDP.3 – Clean Publication Highlights\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<DP2_Research_Focus_Summary>\n{{ $json.DP2_Research_Focus_Summary }}\n</DP2_Research_Focus_Summary>\n\n<Recent_Publications>\n{{\n  ($json.faieInputs?.Recent_Publications || [])\n    .map(d => d.text || d.snippet || '')\n    .join('\\n\\n---\\n\\n')\n}}\n</Recent_Publications>\n\n[OUTPUT]\n\nWrite “DP.3 – Clean Publication Highlights” as a CSV-style table with a header row:\n\nYear,Journal,TopicSummary,Link\n\nThen one row per selected publication. Do not include any other text before or after\nthe table. If you are unsure about a field, leave that cell empty rather than inventing.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        -1216
+      ],
+      "id": "173a5781-9c00-4476-a916-557e9dbeb1f0",
+      "name": "DP.3",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: DP.4 – Preferences]\n\nTask:\nNormalize the faculty member's company / sector interests and desired outcomes into\ntwo simple lists for downstream planning.\n\nRequirements:\n- Parse any text about:\n  - companies or sectors they want to work with or avoid, and\n  - what they hope to get from engagement (funding, pilots, students, etc.).\n- Output two sections:\n  1) Interests_and_Aversions – bullets of companies/sectors the faculty prefers or wants to avoid.\n  2) Desired_Outcomes – bullets of outcomes the faculty wants (≤ 12 words each).\n- If there is truly no preference, write exactly: “No preference stated.” for that section.\n- Do not infer specific company names unless they appear in the input.\n\nTitle:\nDP.4 – Preferences\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<Company_Interests_Notes_or_Emails>\n{{\n  ($json.faieInputs?.Industry_Verticals || [])\n    .map(d => d.text || d.snippet || '')\n    .join('\\n\\n---\\n\\n')\n}}\n</Company_Interests_Notes_or_Emails>\n\n<Engagement_Goals_Text>\n{{\n  ($json.faieInputs?.Engagement_Goals || [])\n    .map(d => d.text || d.snippet || '')\n    .join('\\n\\n---\\n\\n')\n}}\n</Engagement_Goals_Text>\n\n[OUTPUT]\n\nWrite “DP.4 – Preferences” with exactly these sections:\n\nInterests_and_Aversions:\n- ...\n\nDesired_Outcomes:\n- ...\n\nEach bullet ≤ 12 words. If you have no information for a section, write\n“No preference stated.” for that section.\nInclude a brief “Assumptions and Gaps” line at the end if needed.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        -816
+      ],
+      "id": "440ba9f7-5720-400f-9f03-2842b95aafe3",
+      "name": "DP.4",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: DP.5 – Role Definition + Deep Research Brief]\n\nTask:\n1) Define a dual role for the faculty member that aligns with DP.2 focus areas.\n2) Generate a deep research brief on sectors tied to those focus areas.\n\nRequirements for Role Definition:\n- One paragraph.\n- Dual role:\n  (a) Expert in their research domains, and\n  (b) Industry-facing collaborator / advisor.\n- The scope must align with DP.2 (no major new fields).\n- Plain English, suitable for the top of an internal planning memo.\n\nRequirements for Deep Research Brief:\n- Use web search and current information where possible.\n- Focus only on sectors that clearly match DP.2.\n- Include, in structured sections:\n  - Sector map (short list and 1-line description per sector)\n  - 6–10 current needs / pain points in those sectors\n  - Near-term drivers (market, policy, technical)\n  - Watchlist of companies, labs, or consortia with one-line rationales\n  - Typical TRLs or evidence norms for collaboration\n  - Common engagement modes (e.g., sponsored research, pilots, joint labs)\n  - 3–5 visibility venues (events, journals, platforms) with 1-line rationale\n- Explicitly flag assumptions or inferred connections.\n\nTitle:\nDP.5 – Role Definition and Deep Research Brief\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<DP1_Profile_Sheet>\n{{ $json.DP1_Profile }}\n</DP1_Profile_Sheet>\n\n<DP2_Research_Focus_Summary>\n{{ $json.DP2_Research_Focus_Summary }}\n</DP2_Research_Focus_Summary>\n\n<DP3_Clean_Publication_Highlights>\n{{ $json.DP3_Clean_Publication_Highlights }}\n</DP3_Clean_Publication_Highlights>\n\n<DP4_Preferences>\n{{ $json.DP4_Preferences }}\n</DP4_Preferences>\n\n[OUTPUT]\n\nWrite “DP.5 – Role Definition and Deep Research Brief” in this structure:\n\nDP.5 – Role Definition\n<one paragraph dual-role definition>\n\nDP.5 – Deep Research Brief\n<clearly labeled subsections for sector map, needs, drivers, watchlist, TRLs,\nengagement modes, visibility venues, and Assumptions and Gaps>\n\nDo not include any other headings beyond those specified.\n"
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "medium"
+          }
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        -368
+      ],
+      "id": "56b8d3b1-bced-4d41-b362-388e13b11dd7",
+      "name": "DP.5",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: S3.1 – Industry-Facing Summary]\n\nTask:\nCreate a concise industry-facing summary that introduces the faculty member,\nthe problems their work can address, and a concrete next conversation.\n\nRequirements:\n- Exactly 3 paragraphs:\n  1) Identity and core capabilities (who they are, what they can do).\n  2) Industry problems or use cases they can address, grounded in DP.2 and DP.5.\n  3) Proof points (e.g., projects, publications) and a suggested next conversation.\n- Keep sentences short and legible for non-academic readers.\n- Do not restate full DP.2 or DP.5 – only the essentials.\n\nTitle:\nS3.1 – Industry-Facing Summary\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<DP1_Profile_Sheet>\n{{ $json.DP1_Profile }}\n</DP1_Profile_Sheet>\n\n<DP2_Research_Focus_Summary>\n{{ $json.DP2_Research_Focus_Summary }}\n</DP2_Research_Focus_Summary>\n\n<DP5_Deep_Research_Brief>\n{{ $json.DP5_Role_and_Research }}\n</DP5_Deep_Research_Brief>\n\n[OUTPUT]\n\nWrite “S3.1 – Industry-Facing Summary” as exactly three paragraphs following the\nsystem instructions above. End with a short “Assumptions and Gaps” line only if needed.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        -2128
+      ],
+      "id": "0b371a0c-402d-45d7-a556-b0a968113ba6",
+      "name": "S3.1",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: S3.2 – Vertical Map]\n\nTask:\nList 5–7 industry verticals where the faculty's research is relevant, with brief\njustifications.\n\nRequirements:\n- Each vertical should be a meaningful segment (e.g., grid-scale batteries,\n  process manufacturing, materials informatics) – not generic “industry”.\n- For each vertical, provide:\n  - A short name, and\n  - A one-sentence justification linking it to the research focus and deep research brief.\n- Do not repeat the same justification wording across multiple verticals.\n\nTitle:\nS3.2 – Vertical Map\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<DP2_Research_Focus_Summary>\n{{ $json.DP2_Research_Focus_Summary }}\n</DP2_Research_Focus_Summary>\n\n<DP5_Deep_Research_Brief>\n{{ $json.DP5_Role_and_Research }}\n</DP5_Deep_Research_Brief>\n\n[OUTPUT]\n\nWrite “S3.2 – Vertical Map” as a bullet list of 5–7 verticals.\nEach bullet:\n\nVertical Name – one-sentence justification.\n\nFinish with a short “Assumptions and Gaps” line if needed.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        -1664
+      ],
+      "id": "453fb506-6179-4ed2-9228-239361f84779",
+      "name": "S3.2",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: S3.4 – Outreach Pack]\n\nTask:\nCreate a concise outreach pack targeted at a specific company from S3.3.\n\nRequirements:\n- Use S3.1 (overall narrative), the chosen S3.3 company row, and DP.4 outcomes.\n- Output must include:\n  1) A suggested subject line (starting with “Subject:”).\n  2) A concise email body (3–5 short paragraphs).\n  3) Three alternative subject lines.\n  4) A short LinkedIn InMail variant (4–6 sentences).\n  5) A 2-sentence P.S. which proposes an easy next step (e.g., share 1-pager, 30-minute call).\n- Add an appendix to the email along the lines of: “If you know someone else in your organization who would benefit from our partnership, please refer them”\n- Check alignment with DP.4 desired outcome (tone and ask).\n- Check basic factual alignment with the company description from S3.3; do not invent claims.\n- Emails should be written from the faculty members perspective\n\nSpeak To Their Needs (STTN) – A Method for Industry-Friendly Writing\n\nThe STTN method is a Reader-Centric Writing (RCW) strategy for translating the writer’s interests into the reader’s immediate needs. STTN brings readers closer to you, gently nudging readers toward a favorable response.\n\n1) Purpose\n\nThe STTN method equips researchers and entrepreneurs to write short, compelling outreach letters that speak to the reader’s near-term outcomes, while preserving Fidelity to the writer’s Stated Focus Areas (SFAs). This method turns discovery about “what the reader would lose” into a concrete value proposition that earns a positive response from readers.\n\n2) Core Principles\n\n•\tFidelity first – surface the writer’s SFAs exactly as expressed; separate any Inferred Issues until the writer confirms them. Avoid Errors of Imputation. \n•\tRCW over writer-centric asks – place the reader’s gain at the top of every paragraph and sentence. \n•\tActive voice with visible actors – name who does what in each clause; avoid passive constructions and Hidden Passive Voice. \n•\tClarity and Brevity – remove trite openers; compress without loss of meaning; keep a natural, professional tone. \n•\tNo bureaucracy – favor plain English; avoid throat-clearing phrases and institutional distance. \n\n3) The RCW Outreach Method (repeatable in 7 moves)\n\nMove 1 – Capture the writer’s SFAs (no imputation)\nWrite a tight list (3–5 bullets max) of the writer’s explicit goals, constraints, and success tests. Label them “SFAs.” Do not add unconfirmed assumptions. \n\nMove 2 – Translate SFAs into reader outcomes\nFor each SFA, answer: “What near-term outcome would the reader gain if this SFA succeeds?” Write the answer as a result the reader can see or measure (e.g., “stable readout under strain,” “faster deal cycles”). \n\nMove 3 – Use the Loss Lens to reveal value\nState what the reader risks losing without the collaboration (e.g., slower adoption, weak differentiation). Then flip each loss into a positive gain. This produces the raw value proposition. \n\nMove 4 – State a one-sentence value proposition\nCombine the highest-leverage gains into a single sentence that names the reader, the action, and the outcome. Keep agency visible and concrete. Avoid superlatives. \n\nMove 5 – Name three proof paths\nOffer three short, credible actions that create evidence fast (prototype, co-design element, packaging/integration step). Each proof path must tie to a reader outcome from Move 2. Keep each line outcome-first and testable. \n\nMove 6 – Propose the smallest next commitment\nAsk for one focused step (e.g., a 30-minute scoping call) that maps evidence, validation steps, and resource levels. Phrase it as an offer that reduces the reader’s burden. \n\nMove 7 – Close with a friction-remover\nInvite a handoff to the right owner or a pointer to a datasheet so you can tailor a concise one-pager before the call. Keep the tone warm and direct. Close with “Best,”. \n\n4) Micro-Rules for Line-Level Excellence\n\n•\tLead with the reader’s context, not yours. Replace “I wanted to reach out” with the situational bridge the reader values. \n•\tKeep verbs strong; avoid noun forms that hide actors. Example: swap “integration of” for “integrate.” \n•\tUse en dashes – with spaces – for pauses. Never use em dashes for that purpose. \n•\tMaintain tone fidelity to the writer’s voice while removing clutter. \n\n5) RCW Drafting Checklist (one pass, 8 questions)\n1.\tHave I listed SFAs exactly as stated? \n2.\tDoes each paragraph place Liquid Wire’s gains first? \n3.\tDoes every sentence name the actor and action? \n4.\tDoes the value proposition avoid hype and say one concrete thing? \n5.\tDo the three proof paths create decision-grade evidence fast? \n6.\tDoes the call to action lower effort and clarify purpose? \n7.\tDid I remove trite openers and institutional phrasing? \n8.\tDo I use dashes correctly (if any) and keep punctuation plain? \n\n6) PCS Approval Gate (fast quality control)\n\nBefore sending, run a Light-Touch Editorial review and apply the PCS triage:\n\n•\tHIGH – any error that impairs correctness or meaning (must fix).\n•\tMEDIUM – ambiguity that clouds comprehension (revise).\n•\tLOW – pure style or cosmetics (optional).\nA message earns a Green Light only if no HIGH issues remain. Default ties down to avoid over-flagging. \n\n7) Templates\n\nA) One-Sentence Value Proposition\n“[Reader] can [gain/result] by [your action], which [evidence or effect].”\nExample: “Liquid Wire can convert its deformable conductors into a validated, electronics-integrated platform by integrating with our readout and packaging steps, which produces stable signal quality under strain that OEMs accept as market-ready proof.”\n\nB) Three Proof Paths (tight bullets)\n•\tBuild [artifact] that demonstrates [result] under [condition/test].\n•\tCo-design [subsystem] to raise [metric] over [constraint].\n•\tIntegrate [elements] into [form factor] to [deployment result].\n\nC) CTA (single sentence)\n“Open to a 30-minute scoping call to map evidence, quick validation steps, and resource levels?”\n\nD) Friction-Remover\n“If someone else owns sensor integration, please point me to them or share a short datasheet so I can tailor a one-pager before we talk.”\n\n8) Governance and Roles\n\n•\tWriter (Human Operator): owns SFAs and technical truth.\n•\tFAIE or IEIA custom GPT: enforces Fidelity, RCW discipline, PCS gate, and IP foresight (e.g., timing for disclosures vs. public claims). \n•\tEditorial Mode (LTES mode): applies minimal but high-value changes; preserves voice. \n\n9) Quality Checklist\n\nA message produced under this method should do all of the following:\n1.\tExplain to the reader, in the reader’s own terms, what they stand to gain.\n2.\tName three quick, concrete ways you will prove out the value.\n3.\tAsk for the smallest “next commitment” with a friction-remover attached.\n\nAnything less needs another RCW pass. \n\n10) Worked Example of STTN Draft\n\nHere we will show an initial draft (flawed in many ways) and an improved draft (STTN_Draft):\n\n<Initial_Draft_FLAWED>\nS3.4 – Outreach Pack — Liquid Wire Inc.\n\nSubject: Stretchable sensing co-dev prototype\n\nHi — I’m reaching out from Prof. [Faculty Member’s] lab. We build sensor readout electronics and soft sensing systems that could pair well with Liquid Wire’s deformable conductors for shape-sensing and stretchable interconnects.\n•\tRapidly prototype a stretchable sensor grid with stable readout under strain.\n•\tCo-design low-noise front-ends to improve signal quality over deformable traces.\n•\tExplore packaging to integrate conductors, sensors, and electronics in a single module.\n\nWould you be open to a 30-minute scoping call to assess a co-development prototype/pilot fit? We can outline evidence needed, quick validation steps, and resource levels on the call.\n\nP.S. If easier, point me to the right owner or share a brief datasheet on your current conductor stack. I’ll tailor a one-page proposal with options and timelines.\n\n</Initial_Draft_FLAWED>\n\n<Corrected_STTN_Draft_GOOD>\nS3.4 – Outreach Pack — Liquid Wire Inc.\n\nSubject: Advancing stretchable sensing with Liquid Wire’s conductors\n\nHi [Contact Name for VP Engineering or CTO]\n\nI’m [Faculty Member Name], a professor of Electrical and Computer Engineering at Oregon State. My lab develops sensor-readout electronics and soft sensing systems that pair naturally with Liquid Wire’s deformable conductors for shape-sensing and stretchable interconnects.\n\nAs I thought about my work, I realized that if I were to collaborate with Liquid Wire, we could reach some *impressive new milestones together with our shared research technology*:\n\n• Build a stretchable sensor grid with stable, high-quality readout under strain.\n• Co-design low-noise front-ends that preserve signal integrity over deformable traces.\n• Develop a compact package integrating conductors, sensors, and electronics into a single module.\n\nTogether, we could turn Liquid Wire’s conductor technology into a validated, electronics-integrated platform – a proof point that converts materials leadership into system-level capability recognized by OEMs, investors, and strategic partners.\n\nWould you be open to a 30-minute call to explore a prototype or pilot path? We can outline evidence, validation steps, and resource levels on the call.\n\nIf someone else leads your materials or sensor-integration programs, I’d appreciate an introduction or a short datasheet on your current conductor stack – I can tailor a concise one-pager with options and timelines before we meet.\n\nI look forward to hearing from you!\n\nBest,\nMatt\nMatthew L. Johnston, Ph.D.\nProfessor of Electrical and Computer Engineering\nOregon State University\n[Email] | [Phone]\n\n</Corrected_STTN_Draft_GOOD>\n\nTitle:\nS3.4 – Outreach Pack\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<S3_1_Industry_Facing_Summary>\n{{ $json.S3_1_Industry_Summary }}\n</S3_1_Industry_Facing_Summary>\n\n<Selected_S3_3_Company_Row>\n{{ $json.S3_3_Selected_Company_Row }}\n</Selected_S3_3_Company_Row>\n\n<DP4_Preferences>\n{{ $json.DP4_Preferences }}\n</DP4_Preferences>\n\n[OUTPUT]\n\nWrite “S3.4 – Outreach Pack” with the following labeled sections:\n\nSubject_Line:\n<one subject line>\n\nEmail_Body:\n<3–5 short paragraphs>\n\nAlternative_Subject_Lines:\n- ...\n- ...\n- ...\n\nLinkedIn_Variant:\n<4–6 sentence InMail-style message>\n\nPostscript:\n<2 sentences with an easy next step>\n\nEnsure tone and ask are consistent with the desired outcomes in DP.4.\nInclude a brief “Assumptions and Gaps” line at the end if needed.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        -816
+      ],
+      "id": "cee5c393-5b5d-4759-b8f6-34583e91ef85",
+      "name": "S3.4",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: S3.5 – Visibility Plan]\n\nTask:\nRecommend 3–5 visibility venues or events where the faculty member should show\nup to connect with relevant industry audiences.\n\nRequirements:\n- Use DP.2 and DP.5 sectors and needs.\n- When permitted, use web / calendar lookup to identify realistic venues.\n- For each venue, include:\n  - Name and type (conference, workshop, webinar, platform, etc.)\n  - Timing (month/year or cadence, if available)\n  - Why it is relevant\n  - A simple recommended action (e.g., submit talk, host tutorial, attend and network).\n- Reflect any stated constraints (travel, time, region) if available.\n\nTitle:\nS3.5 – Visibility Plan\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<DP2_Research_Focus_Summary>\n{{ $json.DP2_Research_Focus_Summary }}\n</DP2_Research_Focus_Summary>\n\n<DP5_Deep_Research_Brief>\n{{ $json.DP5_Role_and_Research }}\n</DP5_Deep_Research_Brief>\n\n<Constraints_if_any>\n{{ $json.Visibility_Constraints }}\n</Constraints_if_any>\n\n[OUTPUT]\n\nWrite “S3.5 – Visibility Plan” as a short intro paragraph followed by a bullet list\nof 3–5 venues. Each bullet:\n\nVenue Name (type, timing) – why it matters – recommended action.\n\nFlag clearly if any venue is an inference or approximate match.\n"
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "medium"
+          }
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        -384
+      ],
+      "id": "38779072-ba88-488b-96d5-ceb9716e5a69",
+      "name": "S3.5",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: S3.6 – Web Updates]\n\nTask:\nPropose concrete updates to the faculty's web presence to better support\nindustry engagement. If no website is attached in your input, output \"No Website Attached\"\n\nRequirements:\n- Base your suggestions on the current page text and S3.1 summary.\n- Suggest 3–5 improvements, each with:\n  - A short label (e.g., “Industry-facing summary block”),\n  - A replacement snippet in plain English.\n- Snippet types may include:\n  - 3-line industry summary,\n  - Featured projects / proof points,\n  - “Collaborate with us” call-to-action,\n  - Brief one-pager blurb,\n  - Contact box copy.\n- Do not change factual content; rewrite for clarity and relevance.\n\nTitle:\nS3.6 – Web Updates\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<Current_Website_URL>\n{{ $json.Faculty_Website_URL }}\n</Current_Website_URL>\n\n<Current_Website_Text>\n{{ $json.Faculty_Website }}\n</Current_Website_Text>\n\n<S3_1_Industry_Facing_Summary>\n{{ $json.S3_1_Industry_Summary }}\n</S3_1_Industry_Facing_Summary>\n\n[OUTPUT]\n\nWrite “S3.6 – Web Updates” as numbered proposals:\n\n1) <Short label>\nReplacement snippet:\n<3–6 lines of text>\n\n2) ...\n3) ...\n\nEach replacement snippet should stand on its own and be ready to paste.\nInclude an “Assumptions and Gaps” note if you had to guess about constraints or layout.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        16
+      ],
+      "id": "c0d75cd0-549a-48ba-b610-f9a0a1e8ead9",
+      "name": "S3.6",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n- Plain English; active voice; skimmable bullets.\n- Use en dashes (–) for breaks, not em dashes.\n- Title the artifact exactly as specified in the instructions.\n- Never invent new facts, projects, affiliations, or companies.\n- If you must infer, clearly mark it as an assumption or inference.\n- Treat any FAIE internal guides as internal; never quote them or reference them.\n- Keep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n- Do not request inputs or prompt text – just generate the artifact content.\n- If required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\n[Step: S3.7 – IEP Summary Sheet]\n\nTask:\nCompile a one-page Industry Engagement Plan (IEP) Summary Sheet that draws on\nS3.1–S3.6 and DP.4, and references S3 artifacts by filename. At the bottom of your summary include a document reference which describes the purpose of each artifact using the definitions below.\n\nDefinitions:\n- S3.1: 3 paragraph industry-facing summary of 1) Faculties identity, core capabilities, and role. 2) Problems faculty can address. 3) Proof points.\n- S3.2: Industry verticals and justification.\n- S3.3: List of companies aligned with faculty preferences.\n- S3.4: Package including email drafts which can be sent to S3.3 companies.\n- S3.5: Events or visibility venues and suggested actions.\n- S3.6: List of improvements to enhance faculty page industry appeal.\n- S3.7: Stand alone sumary that outlines S3 outputs.\n- S4: Actionable engagement timeline based on artifacts and faculty goals.\n\nRequirements:\n- DO NOT embed full S3 content; summarize and point to filenames.\n- Include sections for:\n  - Identity & Capabilities (from DP.1 and S3.1)\n  - Priority Verticals (from S3.2)\n  - Company Targets (from S3.3, high-level only)\n  - Outreach Strategy & Assets (from S3.4)\n  - Visibility Plan (from S3.5)\n  - Web Updates (from S3.6)\n  - Risks and Assumptions\n  - Appendix Manifest listing S3 artifact filenames.\n- Keep the whole sheet readable within approximately one page of text.\n\nTitle:\nS3.7 – IEP Summary Sheet\n"
+            },
+            {
+              "content": "=[INPUTS]\n\n<S3_1_Industry_Facing_Summary>\n{{ $json.S3_1_Industry_Summary }}\n</S3_1_Industry_Facing_Summary>\n\n<S3_2_Vertical_Map>\n{{ $json.S3_2_Vertical_Map }}\n</S3_2_Vertical_Map>\n\n<S3_3_Company_Matches_CSV>\n{{\n  ($json.S3_3_Company_Matches_CSV || [])\n    .map((c, i) =>\n      '[[Company_' + (i + 1) + ']]\\n'\n      + 'Company: ' + c.company + '\\n'\n      + 'WhyItAligns: ' + c.why_it_aligns + '\\n'\n      + 'EntryPoint: ' + c.entry_point + '\\n'\n      + 'MatchType: ' + c.match_type\n    )\n    .join('\\n\\n--------------------\\n\\n')\n}}\n</S3_3_Company_Matches_CSV>\n\n<S3_4_Outreach_Pack>\n{{\n  ($json.S3_4_Outreach_Pack || [])\n    .map((d, i) =>\n      '[[S3.4_Outreach_Message_' + (i + 1) + ']]\\n' +\n      d.S3_4_Outreach_Message_Draft\n    )\n    .join('\\n\\n--------------------\\n\\n')\n}}\n</S3_4_Outreach_Pack>\n\n<S3_5_Visibility_Plan>\n{{ $json.S3_5_Visibility_Plan }}\n</S3_5_Visibility_Plan>\n\n<S3_6_Web_Updates>\n{{ $json.S3_6_Web_Updates }}\n</S3_6_Web_Updates>\n\n<DP4_Preferences>\n{{ $json.DP4_Preferences }}\n</DP4_Preferences>\n\n<S3_Filename_Manifest_Input_if_available>\n{{ $json.S3_Filenames }}\n</S3_Filename_Manifest_Input_if_available>\n\n[OUTPUT]\n\nWrite “S3.7 – IEP Summary Sheet” with clearly labeled sections:\n\n1. Executive Summary\n2. Identity & Capabilities\n3. Priority Verticals\n4. Company Targets\n5. Outreach Strategy & Assets\n6. Visibility Plan\n7. Web Updates\n8. Risks and Assumptions\n9. Appendix Manifest\n\nIn the Appendix Manifest, list each S3 artifact by filename and a 1-line description.\nDo NOT paste full S3 content – only brief summaries and filenames.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        432
+      ],
+      "id": "2b135d0e-410b-4ff9-ba40-481b3ce264cc",
+      "name": "S3.7",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "maxItems": 20
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        -1776,
+        -1216
+      ],
+      "id": "456ca10c-8868-4c9a-ae45-949f944dcb4e",
+      "name": "Limit"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "S3_3_Company_Matches_CSV",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -1584,
+        -1136
+      ],
+      "id": "8643e7d5-42e3-4e1e-a233-27ac0db08c95",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "GPT-5.2"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "[Step: S4 – Final IEP Assembly & Review]\n\nYou are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member’s academic work into clear, industry-facing value statements\nand action plans.\n\nCurrent step: S4 – Execution Timeline.\n\nGoal:\nTurn the completed Industry Engagement Plan (IEP) into a 25-week, faculty-friendly\nexecution timeline with small, repeatable actions that implement the S3 artifacts.\n\nAudience:\nA busy research faculty member who can realistically spend ~1–2 hours per week\non industry engagement.\n\nYour job:\n- Focus on **sequencing and execution**, not strategy design (the strategy already lives in S3 and DP artifacts).\n- Use only the supplied IEP Summary and S3/DP artifacts – do NOT invent new\n  companies, events, or web copy that are not implied by those artifacts.\n- Turn S3.1–S3.6 into concrete actions the faculty can actually do:\n  - S3.1 – use for positioning and language in outreach.\n  - S3.2 – use to choose which verticals to work on first.\n  - S3.3 – drive company selection and outreach/follow-up cycles.\n  - S3.4 – drive email / LinkedIn sends and follow-ups.\n  - S3.5 – drive conference / event prep and submissions.\n  - S3.6 – drive website and profile updates.\n  - S3.7 – provide the overall structure and priorities.\n  - DP.4 – respect preferences, avoid-list, and desired outcomes.\n\nConstraints and style:\n- Plain English. Short paragraphs and skimmable bullets.\n- No new research, companies, or events beyond what the artifacts imply.\n- Respect **avoid** companies and constraints in DP.4.\n- Emphasize:\n  - clear sequencing (what to do first, and what builds later),\n  - concrete actions (no vague “network more”),\n  - sensible defaults (e.g., “reach out to the top 3 companies in S3.3”),\n  - reassurance about what “good enough” progress looks like.\n- Assume the faculty will put this timeline on **autopilot** using calendar\n  reminders, templates, and saved email drafts.\n\nEnd user considerations:\n- The faculty member will not have any context for the functionality of the FAIE cycle or its artifacts. Your timeline must explain how each step contributes to the faculty members goal of industry connection, or the ones listed in DP.4\n- Reference elements  / artifacts in the final timeline by name instead of \"DP._ / S._\" unless directing the faculty member on where to find the information.\n\nRequired outputs (in order):\n1. A short orientation paragraph explaining the 25-week cadence and how to use the timeline.\n2. A phase overview (e.g., 3–4 phases such as “Foundation”, “Initial Outreach”,\n   “Scale & Visibility”, “Consolidate & Reset”).\n3. A 25-week timeline, ideally in a Markdown table, where each row includes:\n   - Week (or Weeks, e.g., “Weeks 1–2”),\n   - Phase / Focus,\n   - 2–4 concrete Actions (each doable in ~30–45 minutes),\n   - Key Inputs (which S3/DP artifacts to open or reuse),\n   - “Good enough” definition (how to know this week is done).\n4. A short section “Automation & Habits” that explains how to:\n   - batch recurring tasks,\n   - set calendar reminders,\n   - reuse templates from S3.4,\n   - and run a light-weight check-in every 4–5 weeks.\n5. A one-paragraph encouragement / reassurance that modest, consistent effort is sufficient.\n\nFormat:\n- Use Markdown headings (## Phase overview, ## 25-week timeline, etc.).\n- Use a Markdown table for the week-by-week schedule when possible.\n- Reference artifacts by name (e.g., “S3.3 – Company Matches”) or filename,\n  rather than pasting their full content.\n- Do not add any instructions about how to run models or tools – just the human-facing plan."
+            },
+            {
+              "content": "=[INPUTS]\n\n<IEP_Summary_Sheet>\n{{ $json.S3_7_IEP_Summary_Sheet }}\n</IEP_Summary_Sheet>\n\n<S3_1_Industry_Facing_Summary>\n{{ $json.S3_1_Industry_Summary }}\n</S3_1_Industry_Facing_Summary>\n\n<S3_2_Vertical_Map>\n{{ $json.S3_2_Vertical_Map }}\n</S3_2_Vertical_Map>\n\n<S3_3_Company_Matches>\n{{ $json.S3_3_Company_Matches }}\n</S3_3_Company_Matches>\n\n<S3_4_Outreach_Pack_Examples>\n{{ ($json.S3_4_Outreach_Pack || [])\n    .map(p => p.S3_4_Outreach_Message_Draft || p)\n    .join('\\n\\n---\\n\\n') }}\n</S3_4_Outreach_Pack_Examples>\n\n<S3_5_Visibility_Plan>\n{{ $json.S3_5_Visibility_Plan }}\n</S3_5_Visibility_Plan>\n\n<S3_6_Web_Updates>\n{{ $json.S3_6_Web_Updates }}\n</S3_6_Web_Updates>\n\n<DP4_Preferences>\n{{ $json.DP4_Preferences }}\n</DP4_Preferences>\n\n<Optionally_DP5_Role_and_Research>\n{{ $json.DP5_Role_and_Research || '' }}\n</Optionally_DP5_Role_and_Research>\n\n[OUTPUT]\n\nUsing ONLY the information above, produce:\n\n- “S4 – Execution Timeline” as described in your system instructions:\n  - 25-week horizon,\n  - weekly or biweekly cadence,\n  - specific, repeatable actions that implement the S3 artifacts,\n  - clear sequencing, sensible defaults, and “good enough” definitions.\n\nEmphasize:\n- Very concrete tasks (e.g., “Send 2 outreach emails using S3.4 templates to companies 1–2 from S3.3”),\n- 1–2 hours of work per week,\n- references back to the named artifacts instead of rewriting them.\n\nDo not add any content outside of the S4 artifact itself."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -1184,
+        -2112
+      ],
+      "id": "83c04733-e4f8-4ed5-a9ac-a63860e2cfed",
+      "name": "S4",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Faculty Email').item.json.Email }}",
+        "subject": "=FAIE Cycle - |  {{ $('Normalize Form Meta').first().json.form.name }}",
+        "emailType": "text",
+        "message": "=Dear {{ $('Normalize Form Meta').first().json.form.name }},\n\nThank you for your email. \n\nYour FAIE IEP Document has been completed.\n\nRegards,\nOSU Genesis Department\n",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "=faie_package"
+              }
+            ]
+          }
+        }
+      },
+      "id": "e0547145-32c8-4b22-9667-2a023a848c47",
+      "name": "Mail FAIE Package",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        304,
+        -1824
+      ],
+      "webhookId": "7cdb8e16-70fa-4ec3-b0b0-acccb51d0539",
+      "typeVersion": 2.1,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1PjdDfo0Owcti7GT",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -512,
+        -1824
+      ],
+      "id": "fc29820a-8656-48fa-b843-643c8dfe9778",
+      "name": "Merge_All_Artifacts"
+    },
+    {
+      "parameters": {
+        "jsCode": "// items: array of all artifact items\nconst out = {\n  json: {},          // you can put high-level metadata here if you want\n  binary: {},\n};\n\nitems.forEach((item, index) => {\n  if (!item.binary) return;\n\n  // copy every binary prop on this item; usually just \"data\"\n  for (const [key, bin] of Object.entries(item.binary)) {\n    const newKey = `file_${index}_${key}`; // e.g. file_0_data, file_1_data, ...\n    out.binary[newKey] = bin;\n  }\n});\n\nreturn [out];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -1808
+      ],
+      "id": "d9f8dbda-b8d7-4095-98ec-cb0d54a0c51b",
+      "name": "Bundle_Artifacts_for_Zip"
+    },
+    {
+      "parameters": {
+        "operation": "compress",
+        "binaryPropertyName": "={{ Object.keys($binary).join(',') }}",
+        "fileName": "=FAIE Package - {{ $('Normalize Form Meta').first().json.form.name }}.zip",
+        "binaryPropertyOutput": "faie_package"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        -128,
+        -1808
+      ],
+      "id": "da2309aa-62d1-4803-b4f6-43f31b1a0092",
+      "name": "Compression – Build FAIE Package"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "DP1_Profile",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3248,
+        -2208
+      ],
+      "id": "8e3b04e2-5d43-4fd6-9bf6-1d522e8c8a24",
+      "name": "DP.1 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "DP2_Research_Focus_Summary",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3248,
+        -1744
+      ],
+      "id": "4c731961-aa03-45df-91d2-edde1efb91e9",
+      "name": "DP.2 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "DP3_Clean_Publication_Highlights",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3248,
+        -1296
+      ],
+      "id": "987b62b4-69b9-490f-b89e-605ce21bf6ef",
+      "name": "DP.3 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "DP4_Preferences",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3248,
+        -896
+      ],
+      "id": "b62c527f-9e51-4d5b-9361-dfdf27bbd7ea",
+      "name": "DP.4 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "DP5_Role_and_Research",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3248,
+        -464
+      ],
+      "id": "849e2755-1256-4450-b37c-457ad1cbde8d",
+      "name": "DP.5 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "S3_1_Industry_Summary",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1936,
+        -2208
+      ],
+      "id": "54a10034-aa85-4609-bacc-45bed4b3b172",
+      "name": "S3.1 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "S3_2_Vertical_Map",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1936,
+        -1744
+      ],
+      "id": "1caee4e3-7959-4bbf-abec-5618d96aa670",
+      "name": "S3.2 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "S3_3_Selected_Company_Row",
+              "value": "=Company: {{ $json.company }}\nWhy it Aligns: {{ $json.why_it_aligns }}\nEntry Point: {{ $json.entry_point }}\nMatch Type: {{ $json.match_type }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1584,
+        -1296
+      ],
+      "id": "b67b97b6-a497-4a25-b42c-c32fa8a35cb1",
+      "name": "S3.3 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "S3_5_Visibility_Plan",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1936,
+        -464
+      ],
+      "id": "76418770-0587-4508-a25e-9ce7c31c8eb8",
+      "name": "S3.5 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "S3_6_Web_Updates",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1936,
+        -64
+      ],
+      "id": "d3674e2d-a677-45e7-80bd-26857095a421",
+      "name": "S3.6 Label"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "S3_7_IEP_Summary_Sheet",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1936,
+        352
+      ],
+      "id": "5237f481-71f5-47e5-b33e-f0513603b80d",
+      "name": "S3.7Label"
+    },
+    {
+      "parameters": {
+        "content": "# Step 4\n## FAIE Finalization",
+        "height": 112,
+        "width": 400
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1408,
+        -2464
+      ],
+      "typeVersion": 1,
+      "id": "68bea11f-7375-4fb4-817c-5da005a285cb",
+      "name": "Sticky Note19"
+    },
+    {
+      "parameters": {
+        "content": "## I will finish this later"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3488,
+        -2864
+      ],
+      "id": "1f27a802-c88d-445e-8a32-0c25e3bb06e8",
+      "name": "Sticky Note18"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -5920,
+        -2176
+      ],
+      "id": "7aef52de-b437-4e07-8d0f-a2d80a8fa80e",
+      "name": "Docx+PDF merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -5504,
+        -2176
+      ],
+      "id": "be248bf9-294d-48e8-8ffd-9396aee8ec35",
+      "name": "Classify+Text merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3728,
+        -1216
+      ],
+      "id": "02818575-262c-4f4b-aefe-0ebdeb670ab0",
+      "name": "DP3 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 4,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3728,
+        -400
+      ],
+      "id": "29456b4c-b32b-482d-9d05-51f3e2423656",
+      "name": "DP5 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2400,
+        -2128
+      ],
+      "id": "25ca3b2b-7c25-4ef6-9e07-84740651c25b",
+      "name": "S3.1 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2400,
+        -1664
+      ],
+      "id": "6780e0be-1f9b-4081-ae36-40e4ecd97296",
+      "name": "S3.2 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2400,
+        -1216
+      ],
+      "id": "7db75541-a7a5-4dbe-913d-35f44f483b10",
+      "name": "S3.3 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2400,
+        -816
+      ],
+      "id": "59f82002-c4b5-4aea-b944-d9baf16d6d0f",
+      "name": "S3.4 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2560,
+        -832
+      ],
+      "id": "10b8b270-b4fd-4958-9c40-dec8b0b85a7a",
+      "name": "S3.1+DP4 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2400,
+        -384
+      ],
+      "id": "2e48d10b-d781-4c04-9f3c-ab8606f8076a",
+      "name": "S3.5 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2400,
+        16
+      ],
+      "id": "5d0e1b52-89ee-4466-b788-e433a35db63b",
+      "name": "S3.6 Merge"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "numberInputs": 7,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2656,
+        352
+      ],
+      "id": "723f2a31-7af2-4be0-9699-c5d42a08d49e",
+      "name": "S3.7 Merge"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "S3_4_Outreach_Pack",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -1776,
+        -816
+      ],
+      "id": "f9d87b5e-34f7-4c92-9295-2ec63467944f",
+      "name": "Aggregate2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "S3_4_Outreach_Message_Draft",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1952,
+        -816
+      ],
+      "id": "3424573a-8efe-4500-8e20-46612e81327e",
+      "name": "S3.4 Label"
+    },
+    {
+      "parameters": {
+        "formTitle": "File Upload Test",
+        "formDescription": "Prepare all faculty inputs and attach them below. Unnamed inputs will be inferred. (Research areas, bios, recent publications, websites, company interests, engagement goals.)",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Faculty Name",
+              "placeholder": "First, Last. (ex: John Doe)",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "placeholder": "bennybeaver@oregonstate.edu",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Faculty Website",
+              "placeholder": "If you have a website url, paste it here or type \"N/A\" if not."
+            },
+            {
+              "fieldLabel": "Research Area(s)",
+              "placeholder": "Topical keywords, domain focus, SDG or industry tags"
+            },
+            {
+              "fieldLabel": "Company Interests / Industry Verticals",
+              "placeholder": "Companies engaged or avoided – areas of interest "
+            },
+            {
+              "fieldLabel": "Engagement goals",
+              "placeholder": "Desired outcomes – joint research, licensing, internships"
+            },
+            {
+              "fieldLabel": "Faculty Context",
+              "fieldType": "file",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "ignoreBots": true
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        -7312,
+        -2160
+      ],
+      "id": "0deb19bd-0e0f-4dc1-9011-841e0ad80c58",
+      "name": "DP.0 Form",
+      "webhookId": "ca7394d7-e1bb-49ab-8871-2a869e720f85"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6480891-4dca-4fed-a788-96bb743ad067",
+              "name": "Final_IEP_Punch_List",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -848,
+        -2192
+      ],
+      "id": "508f2f80-b8cc-4d00-8f4b-7a15a8d59cec",
+      "name": "S4 Label"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        128,
+        -1824
+      ],
+      "id": "18f00a07-886a-4244-b5f9-f5a7ae075e5c",
+      "name": "Email + Attachments Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Run Once For All Items\nconst raw = items[0].json;\n\nfunction normalize(value) {\n  if (!value) return '';\n  const trimmed = String(value).trim();\n  if (!trimmed) return '';\n  const upper = trimmed.toUpperCase();\n  if (['N/A', 'NA', 'NONE'].includes(upper)) return '';\n  return trimmed;\n}\n\nconst form = {\n  name: normalize(raw['Faculty Name']),\n  email: normalize(raw['Email']),\n  websiteRaw: normalize(raw['Faculty Website']),\n  researchAreasRaw: normalize(raw['Research Area(s)']),\n  interestsRaw: normalize(raw['Company Interests / Industry Verticals']),\n  goalsRaw: normalize(raw['Engagement goals']),\n};\n\nreturn [{ json: { form } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7104,
+        -1984
+      ],
+      "id": "9939f3b5-39ba-4e78-abf2-e0acb5531bc5",
+      "name": "Normalize Form Meta"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "97a3d5cd-372b-4a25-8b44-54b39803a519",
+              "name": "filename",
+              "value": "={{   $('Split binaries into one item per file')   .itemMatching($itemIndex)    .binary    .data    .fileName }}",
+              "type": "string"
+            },
+            {
+              "id": "b6da78c0-d78d-4b18-ae2a-c3694ee3adb3",
+              "name": "title",
+              "value": "={{ $json.info?.Title || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "4ac4df85-4a19-42bc-804c-f45576a3bd49",
+              "name": "sourceType",
+              "value": "txt",
+              "type": "string"
+            },
+            {
+              "id": "1480f263-f9fd-46e2-a82d-3866fe6720e1",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "c08bfc71-77ed-4001-936a-0ce5ffbd6bd9",
+              "name": "snippet",
+              "value": "={{ ($json.text || '').slice(0, 1400) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -6096,
+        -2000
+      ],
+      "id": "ee46a02f-3181-48fc-9c5f-b5c61c4d4b89",
+      "name": "Prepare MISC for DP"
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 2,
+        "output": "={{\n  (() => {\n    const checklist = $json.checklist || {};\n\n    // Labels that must be non-Pending to move forward\n    const required = [\n      'Research_Area_s',\n      'Faculty_Bio',\n      'Recent_Publications',\n    ];\n\n    // If any required label is still Pending (or missing), route to Output 1 (bad)\n    const hasPendingRequired = required.some(label => {\n      const status = checklist[label] || 'Pending';\n      return status === 'Pending';\n    });\n\n    // 0 = good (ready), 1 = bad (incomplete)\n    return hasPendingRequired ? 1 : 0;\n  })()\n}}\n"
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -4160,
+        -2144
+      ],
+      "id": "673b8696-545d-435d-985a-6e9cc0ff9a73",
+      "name": "Switch_DP0_Ready",
+      "notes": "Will ignore website"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get research_areas from the Extract Areas response (this node's input)\nconst extractionText = items[0]?.json?.output?.[0]?.content?.[0]?.text || {};\nconst researchAreas = extractionText.research_areas || [];\n\n// 2. Get the original DP0 object from the \"Integrate form fields\" node\n//    (make sure this string matches the node name exactly)\nconst baseItems = $items('Integrate form fields');\nif (!baseItems.length) {\n  throw new Error('Integrate form fields: no items found for DP0 base object');\n}\n\n// Clone so we don't mutate the original n8n data structures\nconst base = JSON.parse(JSON.stringify(baseItems[0].json));\n\n// 3. Ensure faieInputs and checklist containers exist\nconst faieInputs = base.faieInputs || {};\nbase.faieInputs = faieInputs;\n\nconst checklist = base.checklist || {};\nbase.checklist = checklist;\n\n// Helper: ensure faieInputs.Research_Area_s is an array\nif (!Array.isArray(faieInputs.Research_Area_s)) {\n  if (faieInputs.Research_Area_s) {\n    faieInputs.Research_Area_s = [faieInputs.Research_Area_s];\n  } else {\n    faieInputs.Research_Area_s = [];\n  }\n}\n\n// 4. If we actually got any research areas, attach them\nif (researchAreas.length) {\n  faieInputs.Research_Area_s.push({\n    sourceType: 'inferred_from_docs',\n    title: 'Inferred Research Areas (DP0)',\n    filename: null,\n    snippet: researchAreas\n      .map(r => r.label || '')\n      .filter(Boolean)\n      .join('; ')\n      .slice(0, 400),\n    text: JSON.stringify(researchAreas),\n  });\n\n  // Only mark as Inferred if not already Received\n  if (checklist.Research_Area_s !== 'Received') {\n    checklist.Research_Area_s = 'Inferred';\n  }\n}\n\n// 5. Return a single merged DP0 item downstream\nreturn [\n  {\n    json: base,\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4352,
+        -2336
+      ],
+      "id": "69d9d0a0-ad43-4fbb-9796-f194cf3f014c",
+      "name": "Apply Extracted Areas back into DP0"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-5-NANO"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an information extraction assistant for the FAIE (Faculty Advisor for Industry Engagement) workflow.\n\nGoal:\n- From the provided faculty materials, infer a small set of distinct research areas suitable for industry-facing planning.\n\nRequirements:\n- Use only the text provided.\n- Research areas should be non-overlapping, sector-relevant themes (not single papers).\n- Each area must have:\n  - label: concise 2–5 word title\n  - keywords: 3–8 representative technical terms or phrases\n  - one_sentence: a single plain-English sentence.\n\nOutput:\n- You must return a single JSON object that matches the provided JSON schema exactly.\n- Do not include explanations, commentary, or extra fields.\n\n<JSON>\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"faculty\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"full_name\": {\n          \"type\": \"string\",\n          \"description\": \"Faculty member's full name as it appears in the materials.\"\n        }\n      },\n      \"required\": [\"full_name\"]\n    },\n    \"research_areas\": {\n      \"type\": \"array\",\n      \"description\": \"Inferred high-level research areas based on the provided materials.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"label\": {\n            \"type\": \"string\",\n            \"description\": \"Short name of the research area.\"\n          },\n          \"keywords\": {\n            \"type\": \"array\",\n            \"items\": { \"type\": \"string\" },\n            \"description\": \"Representative technical keywords or phrases.\"\n          },\n          \"one_sentence\": {\n            \"type\": \"string\",\n            \"description\": \"One plain-English sentence describing this area for a broad technical audience.\"\n          }\n        },\n        \"required\": [\"label\", \"one_sentence\"]\n      },\n      \"minItems\": 1,\n      \"maxItems\": 8\n    },\n    \"confidence\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"name\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"maximum\": 1,\n          \"description\": \"Model confidence in the extracted full name.\"\n        },\n        \"research_areas\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"maximum\": 1,\n          \"description\": \"Model confidence in the inferred research areas.\"\n        }\n      }\n    }\n  },\n  \"required\": [\"faculty\", \"research_areas\"]\n}\n</JSON>"
+            },
+            {
+              "content": "=<CV_AND_BIO_SNIPPETS>\n{{ ($json.faieInputs.Faculty_Bio || [])\n    .map(d => d.snippet || d.text || '')\n    .join('\\n\\n')\n    .slice(0, 4000) }}\n</CV_AND_BIO_SNIPPETS>\n\n<RECENT_PUBLICATION_SNIPPETS>\n{{ ($json.faieInputs.Recent_Publications || [])\n    .map(d => d.snippet || d.text || '')\n    .join('\\n\\n')\n    .slice(0, 4000) }}\n</RECENT_PUBLICATION_SNIPPETS>\n\n<WEBSITE_SNIPPETS>\n{{ ($json.faieInputs.Faculty_Website || [])\n    .map(d => d.snippet || d.text || '')\n    .join('\\n\\n')\n    .slice(0, 2000) }}\n</WEBSITE_SNIPPETS>\n\n<PREFERENCE_SNIPPETS>\n{{ ['Industry_Verticals','Engagement_Goals']\n    .reduce((acc, key) => {\n      const arr = $json.faieInputs[key] || [];\n      return acc.concat(arr.map(d => d.snippet || d.text || ''));\n    }, [])\n    .join('\\n\\n')\n    .slice(0, 2000) }}\n</PREFERENCE_SNIPPETS>\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "name": "JSON",
+              "schema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"research_areas\": {\n      \"type\": \"array\",\n      \"description\": \"Inferred high-level research areas based on the provided materials.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"label\": {\n            \"type\": \"string\",\n            \"description\": \"Short name of the research area.\"\n          },\n          \"keywords\": {\n            \"type\": \"array\",\n            \"description\": \"Key technical or topical terms for this area.\",\n            \"items\": {\n              \"type\": \"string\"\n            }\n          },\n          \"one_sentence\": {\n            \"type\": \"string\",\n            \"description\": \"One sentence, plain-English description of the research area.\"\n          }\n        },\n        \"required\": [\"label\", \"keywords\", \"one_sentence\"],\n        \"additionalProperties\": false\n      },\n      \"minItems\": 1,\n      \"maxItems\": 8\n    }\n  },\n  \"required\": [\"research_areas\"],\n  \"additionalProperties\": false\n}\n",
+              "strict": true
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -4640,
+        -2336
+      ],
+      "id": "67f24de9-ad2b-4d5d-a1fa-5af4c490b99e",
+      "name": "Extract Areas",
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Helper: treat empty / \"N/A\" / \"none\" as no content\nfunction hasContent(value) {\n  if (!value || typeof value !== 'string') return false;\n  const trimmed = value.trim();\n  if (!trimmed) return false;\n  return !/^n\\/?a$/i.test(trimmed) && !/^none$/i.test(trimmed);\n}\n\n// Helper: ensure faieInputs[key] is an array\nfunction ensureArray(obj, key) {\n  if (!obj[key]) {\n    obj[key] = [];\n  } else if (!Array.isArray(obj[key])) {\n    obj[key] = [obj[key]];\n  }\n}\n\nreturn items.map(item => {\n  const json = item.json;\n\n  // Ensure containers exist\n  const faieInputs = json.faieInputs || {};\n  const checklist  = json.checklist  || {};\n  json.faieInputs  = faieInputs;\n  json.checklist   = checklist;\n\n  // Existing normalized form block (from Normalize Form Meta)\n  const form = json.form || {};\n\n  // Prefer values from form.*, then fall back to old top-level fields\n  const nameRaw       = (form.name                       || json['Faculty Name'] || '').trim();\n  const emailRaw      = (form.email                      || json['Email'] || '').trim();\n  const websiteRaw    = (form.websiteRaw                 || json['Faculty Website'] || '').trim();\n  const researchRaw   = (form.researchAreasRaw           || json['Research Area(s)'] || '').trim();\n  const interestsRaw  = (form.interestsRaw               || json['Company Interests / Industry Verticals'] || '').trim();\n  const goalsRaw      = (form.goalsRaw                   || json['Engagement goals'] || '').trim();\n\n  // Write back a clean, canonical form block for downstream nodes\n  json.form = {\n    name:             nameRaw || null,\n    email:            emailRaw || null,\n    websiteRaw:       websiteRaw || null,\n    researchAreasRaw: researchRaw || null,\n    interestsRaw:     interestsRaw || null,\n    goalsRaw:         goalsRaw || null,\n  };\n\n  // --- Research Areas from form ---\n  if (hasContent(researchRaw)) {\n    ensureArray(faieInputs, 'Research_Area_s');\n    faieInputs.Research_Area_s.push({\n      sourceType: 'form',\n      title:      'Faculty-entered research areas (DP0)',\n      filename:   null,\n      snippet:    researchRaw.slice(0, 400),\n      text:       researchRaw,\n    });\n    checklist.Research_Area_s = 'Received';\n  }\n\n  // --- Company Interests / Industry Verticals from form ---\n  if (hasContent(interestsRaw)) {\n    ensureArray(faieInputs, 'Industry_Verticals');\n    faieInputs.Industry_Verticals.push({\n      sourceType: 'form',\n      title:      'Faculty-entered company interests / industry verticals (DP0)',\n      filename:   null,\n      snippet:    interestsRaw.slice(0, 400),\n      text:       interestsRaw,\n    });\n    checklist.Industry_Verticals = 'Received';\n  }\n\n  // --- Engagement Goals from form ---\n  if (hasContent(goalsRaw)) {\n    ensureArray(faieInputs, 'Engagement_Goals');\n    faieInputs.Engagement_Goals.push({\n      sourceType: 'form',\n      title:      'Faculty-entered engagement goals (DP0)',\n      filename:   null,\n      snippet:    goalsRaw.slice(0, 400),\n      text:       goalsRaw,\n    });\n    checklist.Engagement_Goals = 'Received';\n  }\n\n  // No faculty/meta blocks anymore\n  delete json.faculty;\n  delete json.meta;\n\n  item.json = json;\n  return item;\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4960,
+        -2176
+      ],
+      "id": "f8196c3a-e358-4371-bd26-329544557ad2",
+      "name": "Integrate form fields",
+      "notes": "This node:\n\nWrites the faculty identity from the form.\n\nInjects form text into the appropriate faieInputs buckets.\n\nUpdates checklist statuses for any field we now consider “Received”.\n\nCleans up pending.\n\nComputes the meta flags that control whether we ever call Extract Areas."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combined DP.0 checklist + FAIE input bundle\n// Assumes each incoming item has:\n// - json.message.content.{ filename, label, confidence }\n// - plus metadata from the extract pipeline: filename/title/sourceType/text/snippet\n\nconst ALL_LABELS = [\n  'Research_Area_s',\n  'Faculty_Bio',\n  'Recent_Publications',\n  'Faculty_Website',\n  'Industry_Verticals',\n  'Engagement_Goals',\n];\n\n// For upgrading status as stronger evidence appears\nconst statusOrder = { Pending: 0, Inferred: 1, Received: 2 };\n\n// Initialise checklist and FAIE input buckets\nconst checklist = {};\nconst faieInputs = {};\n\nfor (const label of ALL_LABELS) {\n  checklist[label] = 'Pending';\n  faieInputs[label] = [];\n}\n\nconst items = $input.all();\n\nfor (const { json } of items) {\n  const msg = json.message || {};\n  const content = msg.content || json.content || {};\n\n  const label = content.label;\n  let confidence = content.confidence;\n\n  // Normalise confidence\n  if (confidence === undefined || confidence === null) {\n    confidence = 0;\n  } else {\n    confidence = Number(confidence);\n    if (Number.isNaN(confidence)) confidence = 0;\n  }\n\n  if (!label) {\n    // No label -> ignore for DP.0\n    continue;\n  }\n\n  // Prefer classifier filename, then pipeline filename\n  const filename =\n    content.filename ??\n    json.filename ??\n    json.fileName ??\n    json.sourceFileName ??\n    null;\n\n  const sourceType = json.sourceType ?? json.source_type ?? null;\n  const title = json.title ?? json.Title ?? null;\n\n  const fullText =\n    typeof json.text === 'string'\n      ? json.text\n      : (json.data && typeof json.data.text === 'string'\n          ? json.data.text\n          : '');\n\n  const snippet =\n    typeof json.snippet === 'string'\n      ? json.snippet\n      : (typeof fullText === 'string' ? fullText.slice(0, 1200) : '');\n\n  // Determine status from confidence\n  const status =\n    confidence >= 0.85 ? 'Received'\n    : confidence >= 0.6 ? 'Inferred'\n    : 'Pending';\n\n  // Update checklist if the label is one of the DP.0 slots\n  if (ALL_LABELS.includes(label)) {\n    const current = checklist[label];\n    if (statusOrder[status] > statusOrder[current]) {\n      checklist[label] = status;\n    }\n  } else {\n    // If you ever introduce extra labels, track them too\n    if (!faieInputs[label]) faieInputs[label] = [];\n  }\n\n  // Always attach the document into the FAIE input bundle under its label\n  faieInputs[label].push({\n    filename,\n    title,\n    sourceType,\n    confidence,\n    snippet,\n    text: fullText,\n  });\n}\n\n// NOTE: no `pending` / `hasPending` – checklist is now the single source of truth\nreturn [\n  {\n    json: {\n      checklist,   // DP.0 status per input type\n      faieInputs,  // Text + metadata grouped by input type\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5312,
+        -2176
+      ],
+      "id": "98d71bdf-95f7-4996-993d-803cdf5592b1",
+      "name": "Build DP0 + FAIE Inputs"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -5136,
+        -2176
+      ],
+      "id": "0648d22c-5917-4705-9cf2-57fde0fa6f73",
+      "name": "Merge_DP0_and_Form"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "83460250-a1b2-4d00-a378-a4ed51ba6f1d",
+              "leftValue": "={{ ($json.checklist?.Research_Area_s || 'Pending') === 'Pending' }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -4800,
+        -2176
+      ],
+      "id": "52ddd7f5-3a2c-4686-8099-1823f1518a9f",
+      "name": "If_Needs_Areas"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are the FAIE Assistant – an AI industry engagement advisor that translates\na faculty member's academic work into clear industry-facing value statements,\nengagement plans, and outreach assets.\n\nOperating rules:\n\nPlain English; active voice; skimmable bullets.\n\nUse en dashes (–) for breaks, not em dashes.\n\nTitle the artifact exactly as specified in the instructions.\n\nNever invent new facts, projects, affiliations, or companies.\n\nIf you must infer, clearly mark it as an assumption or inference.\n\nTreat any FAIE internal guides as internal; never quote them or reference them.\n\nKeep all faculty inputs separate from any generic knowledge; do not copy internal phrasing into faculty-facing text.\n\nDo not request inputs or prompt text – just generate the artifact content.\n\nIf required information is missing or obviously incomplete, state that explicitly in the output under a short “Assumptions and Gaps” note.\n\nWhen asked to return JSON, output must be strictly valid JSON:\n\nDouble quotes around all keys and string values.\n\nNo comments, no trailing commas, no markdown, and no text outside the JSON object.\n\n[Step: S3.3 – Company Matches]\n\nTask:\nGenerate a list of 10–15 companies that plausibly match the faculty member's research focus and preferences.\n\nRequirements:\n\nUse DP.2, DP.4, and any watchlist or examples mentioned in DP.5.\n\nWhere allowed, you may use web search to refine or confirm companies.\n\nExclude any firms that clearly appear on an “avoid” list in DP.4.\n\nRemove duplicates.\n\nIf some matches are inferred rather than stated explicitly, mark those rows as “Inferred”.\n\nFor each company provide:\n\nCompany name\n\nWhy it aligns (1–2 sentences rationale tied to a concrete need or product area)\n\nSuggested entry point (e.g., R&D, corporate lab, partnerships office, program)\n\nMatchType = “Stated” or “Inferred”\n\nTitle:\nS3.3 – Company Matches"
+            },
+            {
+              "content": "=[INPUTS]\n\n<DP2_Research_Focus_Summary>\n{{ $json.DP2_Research_Focus_Summary }}\n</DP2_Research_Focus_Summary>\n\n<DP4_Preferences>\n{{ $json.DP4_Preferences }}\n</DP4_Preferences>\n\n<DP5_Deep_Research_Brief>\n{{ $json.DP5_Role_and_Research }}\n</DP5_Deep_Research_Brief>\n\n[OUTPUT]\n\nReturn only a single JSON object with this structure:\n\n{\n  \"title\": \"S3.3 – Company Matches\",\n  \"companies\": [\n    {\n      \"company\": \"Company name\",\n      \"why_it_aligns\": \"1–2 sentence rationale tied to a concrete need or product area.\",\n      \"suggested_entry_point\": \"Team or function that should be approached (e.g., R&D, corporate lab, partnerships office).\",\n      \"match_type\": \"Stated or Inferred\"\n    }\n  ],\n  \"assumptions_and_gaps\": \"Short note on missing inputs, uncertainty, or assumptions. Use an empty string \\\"\\\" if there are none.\"\n}\n"
+            }
+          ]
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "medium"
+          }
+        },
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "name": "JSON",
+              "schema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"companies\": {\n      \"type\": \"array\",\n      \"description\": \"List of recommended company matches.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"company\": {\n            \"type\": \"string\",\n            \"description\": \"Company name.\"\n          },\n          \"why_it_aligns\": {\n            \"type\": \"string\",\n            \"description\": \"Why the company is a good match.\"\n          },\n          \"entry_point\": {\n            \"type\": \"string\",\n            \"description\": \"Suggested entry point (role/team or channel).\"\n          },\n          \"match_type\": {\n            \"type\": \"string\",\n            \"description\": \"Stated vs inferred source of the match.\",\n            \"enum\": [\"Stated\", \"Inferred\"]\n          }\n        },\n        \"required\": [\n          \"company\",\n          \"why_it_aligns\",\n          \"entry_point\",\n          \"match_type\"\n        ],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\"companies\"],\n  \"additionalProperties\": false\n}"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        -1216
+      ],
+      "id": "b98c5c9a-bd5f-4512-b037-d84c075795f1",
+      "name": "S3.3",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "openAiApi": {
+          "id": "qw0le2DcEvArZ9e9",
+          "name": "OpenAi account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Route by File Type": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rename DOCX binary to ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Misc File Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Prepare PDF for DP0",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Misc File Text": {
+      "main": [
+        [
+          {
+            "node": "Prepare MISC for DP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compression": {
+      "main": [
+        [
+          {
+            "node": "Fan out each extracted file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fan out each extracted file": {
+      "main": [
+        [
+          {
+            "node": "Keep only word/document.xml",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep only word/document.xml": {
+      "main": [
+        [
+          {
+            "node": "Extract from Docx1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert XML to text": {
+      "main": [
+        [
+          {
+            "node": "Prepare DOCX for DP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rename DOCX binary to ZIP": {
+      "main": [
+        [
+          {
+            "node": "Compression",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from Docx1": {
+      "main": [
+        [
+          {
+            "node": "Convert XML to text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP0 Classifier": {
+      "main": [
+        [
+          {
+            "node": "Classify+Text merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split binaries into one item per file": {
+      "main": [
+        [
+          {
+            "node": "Route by File Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Faculty Email": {
+      "main": [
+        [
+          {
+            "node": "Merge12",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Email + Attachments Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF for DP0": {
+      "main": [
+        [
+          {
+            "node": "Docx+PDF merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare DOCX for DP": {
+      "main": [
+        [
+          {
+            "node": "Docx+PDF merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "DP.1": {
+      "main": [
+        [
+          {
+            "node": "DP.1 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "artifacts_dp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "artifacts_dp",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert to File2": {
+      "main": [
+        [
+          {
+            "node": "artifacts_dp",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Convert to File3": {
+      "main": [
+        [
+          {
+            "node": "artifacts_dp",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Convert to File4": {
+      "main": [
+        [
+          {
+            "node": "artifacts_dp",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Convert to File5": {
+      "main": [
+        [
+          {
+            "node": "artifacts_s3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File6": {
+      "main": [
+        [
+          {
+            "node": "artifacts_s3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert to File7": {
+      "main": [
+        [
+          {
+            "node": "artifacts_s3",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Convert to File8": {
+      "main": [
+        [
+          {
+            "node": "artifacts_s3",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Convert to File9": {
+      "main": [
+        [
+          {
+            "node": "artifacts_s3",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Convert to File10": {
+      "main": [
+        [
+          {
+            "node": "artifacts_s3",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Convert to File11": {
+      "main": [
+        [
+          {
+            "node": "artifacts_s3",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    },
+    "Convert to File12": {
+      "main": [
+        [
+          {
+            "node": "Merge_All_Artifacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Merge12": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "artifacts_dp": {
+      "main": [
+        [
+          {
+            "node": "Merge_All_Artifacts",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "artifacts_s3": {
+      "main": [
+        [
+          {
+            "node": "Merge_All_Artifacts",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "DP.2": {
+      "main": [
+        [
+          {
+            "node": "DP.2 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP.3": {
+      "main": [
+        [
+          {
+            "node": "DP.3 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP.4": {
+      "main": [
+        [
+          {
+            "node": "DP.4 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP.5": {
+      "main": [
+        [
+          {
+            "node": "DP.5 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.1": {
+      "main": [
+        [
+          {
+            "node": "S3.1 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.2": {
+      "main": [
+        [
+          {
+            "node": "S3.2 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.4": {
+      "main": [
+        [
+          {
+            "node": "S3.4 Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.5": {
+      "main": [
+        [
+          {
+            "node": "S3.5 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.6": {
+      "main": [
+        [
+          {
+            "node": "S3.6 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.7": {
+      "main": [
+        [
+          {
+            "node": "S3.7Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File11",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split out companies": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "S3.3 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S4": {
+      "main": [
+        [
+          {
+            "node": "S4 Label",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail FAIE Package": {
+      "main": [
+        []
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Convert to File7",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S3.7 Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge_All_Artifacts": {
+      "main": [
+        [
+          {
+            "node": "Bundle_Artifacts_for_Zip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bundle_Artifacts_for_Zip": {
+      "main": [
+        [
+          {
+            "node": "Compression – Build FAIE Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP.1 Label": {
+      "main": [
+        [
+          {
+            "node": "DP5 Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S3.1 Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP.2 Label": {
+      "main": [
+        [
+          {
+            "node": "DP3 Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DP5 Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "S3.1 Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "S3.2 Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S3.3 Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S3.5 Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP.3 Label": {
+      "main": [
+        [
+          {
+            "node": "DP5 Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "DP.4 Label": {
+      "main": [
+        [
+          {
+            "node": "S3.3 Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "DP5 Merge",
+            "type": "main",
+            "index": 3
+          },
+          {
+            "node": "S3.7 Merge",
+            "type": "main",
+            "index": 6
+          },
+          {
+            "node": "S3.1+DP4 Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "DP.5 Label": {
+      "main": [
+        [
+          {
+            "node": "S3.2 Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "S3.5 Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "S3.1 Label": {
+      "main": [
+        [
+          {
+            "node": "S3.6 Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "S3.7 Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S3.1+DP4 Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.2 Label": {
+      "main": [
+        [
+          {
+            "node": "S3.7 Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "S3.3 Label": {
+      "main": [
+        [
+          {
+            "node": "S3.4 Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "S3.5 Label": {
+      "main": [
+        [
+          {
+            "node": "S3.7 Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "S3.6 Label": {
+      "main": [
+        [
+          {
+            "node": "S3.7 Merge",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "S3.7Label": {
+      "main": [
+        [
+          {
+            "node": "S4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compression – Build FAIE Package": {
+      "main": [
+        [
+          {
+            "node": "Email + Attachments Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Docx+PDF merge": {
+      "main": [
+        [
+          {
+            "node": "DP0 Classifier",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Classify+Text merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Classify+Text merge": {
+      "main": [
+        [
+          {
+            "node": "Build DP0 + FAIE Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP3 Merge": {
+      "main": [
+        [
+          {
+            "node": "DP.3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP5 Merge": {
+      "main": [
+        [
+          {
+            "node": "DP.5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.1 Merge": {
+      "main": [
+        [
+          {
+            "node": "S3.1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.2 Merge": {
+      "main": [
+        [
+          {
+            "node": "S3.2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.3 Merge": {
+      "main": [
+        [
+          {
+            "node": "S3.3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.4 Merge": {
+      "main": [
+        [
+          {
+            "node": "S3.4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.1+DP4 Merge": {
+      "main": [
+        [
+          {
+            "node": "S3.4 Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.5 Merge": {
+      "main": [
+        [
+          {
+            "node": "S3.5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.6 Merge": {
+      "main": [
+        [
+          {
+            "node": "S3.6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.7 Merge": {
+      "main": [
+        [
+          {
+            "node": "S3.7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate2": {
+      "main": [
+        [
+          {
+            "node": "S3.7 Merge",
+            "type": "main",
+            "index": 3
+          },
+          {
+            "node": "Convert to File8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.4 Label": {
+      "main": [
+        [
+          {
+            "node": "Aggregate2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DP.0 Form": {
+      "main": [
+        [
+          {
+            "node": "Split binaries into one item per file",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Faculty Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Normalize Form Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S4 Label": {
+      "main": [
+        []
+      ]
+    },
+    "Email + Attachments Merge": {
+      "main": [
+        [
+          {
+            "node": "Mail FAIE Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Form Meta": {
+      "main": [
+        [
+          {
+            "node": "Merge_DP0_and_Form",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Prepare MISC for DP": {
+      "main": [
+        [
+          {
+            "node": "Docx+PDF merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Switch_DP0_Ready": {
+      "main": [
+        [
+          {
+            "node": "DP.1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DP.2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DP3 Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "DP.4",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "S3.6 Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Extracted Areas back into DP0": {
+      "main": [
+        [
+          {
+            "node": "Switch_DP0_Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Areas": {
+      "main": [
+        [
+          {
+            "node": "Apply Extracted Areas back into DP0",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Integrate form fields": {
+      "main": [
+        [
+          {
+            "node": "If_Needs_Areas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build DP0 + FAIE Inputs": {
+      "main": [
+        [
+          {
+            "node": "Merge_DP0_and_Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge_DP0_and_Form": {
+      "main": [
+        [
+          {
+            "node": "Integrate form fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Needs_Areas": {
+      "main": [
+        [
+          {
+            "node": "Extract Areas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch_DP0_Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "S3.3": {
+      "main": [
+        [
+          {
+            "node": "Split out companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedMode": "fixed"
+  },
+  "versionId": "6a85760f-6f09-437a-aeeb-89b791298f76",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "169eb7144bb423cca0fa995672b390f1823425ca58b720d53fbcdbd23f653bef"
+  },
+  "id": "gxq7cj7ijuLSCfQZ",
+  "tags": []
+}
