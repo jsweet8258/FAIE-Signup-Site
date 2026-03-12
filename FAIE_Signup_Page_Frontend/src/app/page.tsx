@@ -149,7 +149,7 @@ export default function Home() {
           <div className="text-center max-w-4xl mx-auto">
             <div className="inline-flex items-center gap-2 bg-white border border-gray-200 text-[#423e3c] px-4 py-2 rounded text-sm font-medium mb-6 shadow-sm">
               <GraduationCap className="w-4 h-4 text-[#D73F09]" />
-              Research & Innovation
+              Research & Innovation | OSU Faculty
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight" style={{ fontFamily: "Georgia, serif", color: '#212529' }}>
               Transform Your Research Into{' '}
