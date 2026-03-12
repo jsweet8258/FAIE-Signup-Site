@@ -563,7 +563,7 @@ export default function Home() {
                   <span className="font-semibold text-white text-lg">FAIE</span>
                 </div>
                 <p className="text-gray-400 text-sm">
-                  Empowering OSU faculty to transform research into industry partnerships through AI-powered engagement planning.
+                  Helping OSU faculty transform research into industry partnerships.
                 </p>
               </div>
 
