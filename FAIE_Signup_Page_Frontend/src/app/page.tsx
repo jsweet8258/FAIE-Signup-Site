@@ -96,15 +96,8 @@ export default function Home() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-3">
-            <a href="https://oregonstate.edu" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              {/* OSU Logo */}
-              <div className="flex items-center">
-                <svg width="180" height="40" viewBox="0 0 300 50" className="h-10 w-auto">
-                  <text x="0" y="35" fill="#D73F09" fontSize="32" fontWeight="700" fontFamily="Georgia, serif">OREGON STATE</text>
-                  <text x="200" y="35" fill="#000000" fontSize="32" fontWeight="300" fontFamily="Georgia, serif"> UNIVERSITY</text>
-                </svg>
-              </div>
-            </a>
+            <span />
+            {/* OSU wordmark removed — placeholder for official logo if needed */}
             <div className="hidden md:flex items-center gap-4">
               <a href="https://oregonstate.edu" className="text-sm text-gray-600 hover:text-[#D73F09] transition-colors">OSU Home</a>
               <span className="text-gray-300">|</span>
