@@ -99,7 +99,7 @@ export default function Home() {
             <span />
             {/* OSU wordmark removed — placeholder for official logo if needed */}
             <div className="hidden md:flex items-center gap-4">
-              <a href="https://oregonstate.edu" className="text-sm text-gray-600 hover:text-[#D73F09] transition-colors">OSU Home</a>
+              <a href="https://oregonstate.edu" className="text-sm text-gray-600 hover:text-[#D73F09] transition-colors">Oregon State University</a>
               <span className="text-gray-300">|</span>
               <a href="https://research.oregonstate.edu" className="text-sm text-gray-600 hover:text-[#D73F09] transition-colors">Research</a>
             </div>
