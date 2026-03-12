@@ -111,12 +111,12 @@ export default function Home() {
       <nav className="bg-[#D73F09] text-white sticky top-0 z-50 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-14">
-            <div className="flex items-center gap-3">
+            <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="flex items-center gap-3 cursor-pointer">
               <div className="w-8 h-8 bg-white rounded flex items-center justify-center">
                 <span className="text-[#D73F09] font-bold text-lg">F</span>
               </div>
               <span className="font-semibold text-lg">FAIE Workshop</span>
-            </div>
+            </a>
             <div className="hidden md:flex items-center gap-6">
               <a href="#about" className="text-white/90 hover:text-white transition-colors text-sm">About FAIE</a>
               <a href="#workshop" className="text-white/90 hover:text-white transition-colors text-sm">Workshop Details</a>
