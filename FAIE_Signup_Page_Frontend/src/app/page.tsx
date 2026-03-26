@@ -147,7 +147,7 @@ export default function Home() {
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight" style={{ fontFamily: "Georgia, serif", color: '#212529' }}>
               Transform Your Research Into{' '}
               <span style={{ color: '#D73F09' }}>
-                Industry Impact[ing]
+                Industry Impact
               </span>
             </h1>
             <p className="text-xl mb-8 max-w-2xl mx-auto leading-relaxed" style={{ color: '#423e3c' }}>
