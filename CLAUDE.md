@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 FAIE Signup Site — a registration system for the Faculty Advisor for Industry Engagement (FAIE) Workshop at Oregon State University. Faculty fill out a form on Vercel; their registration lands in a Notion CRM. Between those endpoints, data crosses three system boundaries, each of which Claude develops through a dedicated interface.
 
+The documentation in this repo is load-bearing, not decorative. The live system is a set of hosted services connected by URLs and API keys — without the architectural documentation, MCP bridge designs, and implementation plan, the system would be opaque and brittle. Treat every document as part of the system's resilience layer. See "Why the Documentation Is the System" in README.md for the full rationale.
+
 ## The Five Phases
 
 This project is not a single application. It is four services connected at well-defined interfaces, plus a reporting layer that reads from the CRM. Claude touches each one differently.

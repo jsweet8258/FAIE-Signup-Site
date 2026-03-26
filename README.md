@@ -8,6 +8,18 @@ A registration system built from distinct services that Claude Code shapes throu
 
 This repo is primarily documentary, secondarily functional. The live system is distributed across Vercel, n8n Cloud, and Notion — three services that talk to each other over HTTPS with no local processes involved. We pull archival copies of all components here, along with teaching and reference material, so that anyone can read this repo and learn how to replicate the entire system in their own context.
 
+## Why the Documentation Is the System
+
+There is little traditional code here. The Next.js frontend is the only thing that compiles. Everything else — the n8n workflows, the Notion database, the MCP bridges, the webhook wiring — lives outside this repository on hosted services. Without documentation, the live system is a set of black boxes connected by URLs that no one remembers configuring.
+
+The intellectual scaffolding in this repo is what makes the system maintainable, extensible, and reproducible. It captures the knowledge that would otherwise exist only in the head of the person who built it: *why* the phases are ordered this way, *what* each interface carries, *how* Claude reaches each service, and *where* the boundaries are. Strip the documentation and the runtime still works — until something breaks or needs to change, at which point there is nothing to guide the repair.
+
+This is a teaching system as much as an operational one. Every Architecture document is written so that a future maintainer — human or AI — can understand not just what exists but why it was built that way. The implementation plan is as much a curriculum as a checklist: it teaches the dependency order, names the blockers, and explains the reasoning behind each step.
+
+The system is deliberately unfinished. What exists today is a proven first phase and a detailed plan for the remaining four. That incompleteness is itself instructive — it shows how to scaffold a distributed system incrementally, wiring one interface at a time in dependency order, testing at each boundary before moving to the next.
+
+This repo is also a reference model. Anyone building a similar system — a form that feeds a workflow that populates a database, with Claude Code shaping each service through MCP — can read this repo end to end and replicate it in their own context. The goal is not just to make *this* system work, but to create knowledge that others can stand on.
+
 ## Current Status
 
 **The end-to-end system is not yet working.** Phase 1 (the landing page) is live. The remaining interfaces are in various stages of scaffolding. See the interface scorecard below for the exact state of each connection.
@@ -30,7 +42,7 @@ For the step-by-step plan to wire the remaining interfaces, see `Control/IMPLEME
 
 ## Architecture
 
-The system has four phases. Each phase is a separate service with its own hosting, its own runtime, and its own interface for development.
+The system has five phases. The first four are distinct services, each with its own hosting, runtime, and development interface. The fifth is a reporting layer that reads from the CRM.
 
 ```
   DEVELOPMENT TIME                              PRODUCTION RUNTIME
@@ -116,8 +128,6 @@ Control/                            Operational control files
   URLs/                             Project bookmarks (GitHub, Vercel, Notion)
   z-obsolete/                       Retired control files
 ```
-
-This repo is primarily documentary, secondarily functional. The live system is distributed across Vercel, n8n Cloud, and Notion. We pull archival copies of all components here — along with teaching and reference material — so that anyone can read this repo and learn how to replicate the entire system in their own context.
 
 ## Setup
 
