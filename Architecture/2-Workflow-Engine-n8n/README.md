@@ -8,6 +8,38 @@ An n8n workflow running on n8n Cloud (`osugenesis.app.n8n.cloud`). It exposes a 
 
 n8n is a workflow automation platform — think of it as a visual programming environment where you connect nodes (webhook trigger, code transform, API call, etc.) into a pipeline. Each node does one thing and passes its output to the next.
 
+```
+                        LOCAL DEV MACHINE
+                   ┌──────────────────────────┐
+                   │                          │
+                   │   Claude Code            │
+                   │   (MCP client)           │
+                   │        │                 │
+                   │        ▼                 │
+                   │   n8n-mcp               │
+                   │   (MCP server)           │
+                   │        │                 │
+                   └────────┼─────────────────┘
+                            │ n8n REST API
+                            ▼
+┌──────────────┐    ┌──────────────────┐
+│              │    │                  │
+│   Vercel     │    │   n8n Cloud      │
+│   (hosting)  │    │   (workflows)    │
+│              │    │                  │
+│  Landing     │───▶│  Webhook         │
+│  Page        │POST│  Trigger         │
+│              │    │                  │
+└──────────────┘    └──────────────────┘
+       ▲                    ▲
+       │                    │
+    GitHub               n8n-mcp
+    auto-deploy          manages
+    on push              workflows
+```
+
+Three systems, two connections. The left arrow (GitHub → Vercel) is how code gets deployed. The right arrow (n8n-mcp → n8n Cloud) is how workflows get built. The horizontal arrow (Vercel → n8n webhook) is the production data path. At runtime, only the horizontal arrow matters.
+
 ## Where it lives
 
 - **Runtime**: n8n Cloud at `osugenesis.app.n8n.cloud` (the live workflow)

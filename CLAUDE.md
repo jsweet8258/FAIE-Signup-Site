@@ -8,7 +8,7 @@ FAIE Signup Site — a registration system for the Faculty Advisor for Industry 
 
 ## The Five Phases
 
-This project is not a single application. It is four services connected at well-defined interfaces. Claude touches each one differently.
+This project is not a single application. It is four services connected at well-defined interfaces, plus a reporting layer that reads from the CRM. Claude touches each one differently.
 
 ### Phase 1 — Frontend (code → git push → Vercel auto-deploy)
 
