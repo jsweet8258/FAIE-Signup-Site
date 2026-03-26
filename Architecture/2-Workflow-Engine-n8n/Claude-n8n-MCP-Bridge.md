@@ -1,4 +1,4 @@
-# MCP Architecture — FAIE Signup Site
+# Claude-to-n8n MCP Bridge
 
 How Claude Code uses the Model Context Protocol (MCP) to build and manage n8n workflows for the FAIE registration form.
 
@@ -60,6 +60,8 @@ This is the bridge between Claude Code and the n8n cloud REST API. It runs local
 - **Management tools** — Given the n8n API URL and API key, Claude can create workflows, update them, activate/deactivate them, and validate them — all through the n8n REST API.
 
 **In plain terms:** n8n-mcp gives Claude the ability to build and manage n8n workflows programmatically. Without it, you'd build workflows manually in the n8n web UI. With it, Claude does it from the terminal.
+
+**Provenance:** n8n-mcp is a third-party open-source project by czlonkowski ([czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp) on GitHub). It is not ours — we use it as a component of our solution. A local clone lives at `/Users/jsweet/Documents/GitHub/n8n-mcp` as a companion repository for reference and inspection, but it remains freestanding and should not be merged into this repo.
 
 ## Development Stages
 
