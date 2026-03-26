@@ -36,3 +36,10 @@ server.log
 .claude
 .z-ai-config
 local-*
+
+# MCP config (contains API keys)
+.mcp.json
+
+# archived
+z-archive
+z-old

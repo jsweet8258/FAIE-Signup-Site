@@ -11,6 +11,10 @@ FAIE Signup Site — a Next.js 16 landing page for registering OSU faculty for t
 - `FAIE_Signup_Page_Frontend/` — Next.js app (registration site)
 - `FAIE_N8N_Service/` — n8n workflow definitions (reference)
 - `URLs/` — Project bookmarks (GitHub, Vercel, Notion)
+- `.claude/` — Project-level config and secrets (gitignored)
+  - `n8n-mcp.json` — MCP server config with n8n API key
+- `.mcp.json` — Symlink to `.claude/n8n-mcp.json` (Claude Code requires this at the project root)
+- `CLAUDE.md` — This file (tracked in git, provides instructions to Claude Code)
 
 ## Commands
 

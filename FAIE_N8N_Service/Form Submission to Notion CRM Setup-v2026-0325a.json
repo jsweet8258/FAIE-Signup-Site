@@ -1,0 +1,157 @@
+{
+  "name": "Form Submission to Notion CRM Setup",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "34e9fb3f-f6bd-4a44-bb58-6fe58ffe4a78",
+        "options": {}
+      },
+      "id": "1d6b86f1-b575-489f-8c80-6f22618aa6ec",
+      "name": "Form Submission Hook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        768,
+        160
+      ],
+      "webhookId": "34e9fb3f-f6bd-4a44-bb58-6fe58ffe4a78",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst updatedItems = items.map((item) => {\n  const { name, email, businessName, message, timeline, budget } =\n    item.json.body;\n  return {\n    name,\n    email,\n    businessName,\n    \"project intent/need\": message,\n    timeline,\n    budget,\n  };\n});\n\nreturn updatedItems;\n"
+      },
+      "id": "458225b6-77ff-4d5b-977a-4fc2557de701",
+      "name": "Parse + Clean Lead Data",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1088,
+        160
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "pageId": {
+          "__rl": true,
+          "mode": "url",
+          "value": ""
+        },
+        "blockUi": {
+          "blockValues": [
+            {},
+            {},
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "9b0de701-fe9d-402c-8e90-c547860f8b82",
+      "name": "Notion",
+      "type": "n8n-nodes-base.notion",
+      "position": [
+        1488,
+        160
+      ],
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "content": "## Website Form Submission to Notion CRM Setup\n**Author David Olusola** \n\nThe great thing about this workflow is that all the fields can be fully customised to match your specific use case. Whether you’re collecting project inquiries, job applications, client onboarding details, or internal requests, you can edit the input fields in your form and update the Code node accordingly.\n\nFor example, if your form collects extra data like “preferred contact time” or “project type,” you simply add those fields into your Code node output and map them to your Notion database properties. This way, your workflow remains flexible and tailored to exactly what your business needs to capture, store, and action efficiently.",
+        "height": 460,
+        "width": 360,
+        "color": 3
+      },
+      "id": "0ef52e21-8fcb-49de-ba3d-fc053b4cf4b0",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        288,
+        -96
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "\n1.**Webhook Node**\n • Purpose: Receives form data.\n • How to set up:\n • Add a Webhook node in n8n.\n • Copy the webhook URL.\n • In your website form settings, set the form action or integration to POST data to this webhook URL.\n • Test submit the form to see the incoming fields in n8n.",
+        "height": 420,
+        "color": 7
+      },
+      "id": "cd203871-19ca-45a9-8de1-9c992b07b282",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        720,
+        -112
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "**Parse Data**\n 1. Reads all input items from the webhook\n 2. Extracts these fields from each form submission:\n • name\n • email\n • businessName\n • message (renamed to project intent/need)\n • timeline\n • budget\n 3. Returns them as a new structured object.",
+        "height": 420,
+        "width": 280,
+        "color": 6
+      },
+      "id": "492dbf59-050f-47b3-a7c0-b19d5680e790",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        960,
+        -112
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Mapping to Notion\n\nWhen you connect this to your Notion “Create Page” node:\n • Select each database property\n • Map it to the corresponding output field from this Code node:\n\nNotion Property\nValue Mapping\nName\n{{$json[\"name\"]}}\nEmail\n{{$json[\"email\"]}}\nBusiness Name\n{{$json[\"businessName\"]}}\nProject Intent/Need\n{{$json[\"project intent/need\"]}}\nTimeline\n{{$json[\"timeline\"]}}\nBudget\n{{$json[\"budget\"]}}",
+        "height": 504,
+        "width": 360
+      },
+      "id": "5445a857-bc49-4ef1-bc34-330c88b2a1ae",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1248,
+        -112
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Form Submission Hook": {
+      "main": [
+        [
+          {
+            "node": "Parse + Clean Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Clean Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "55f045eb-d1b6-4797-9357-40aae2af97a7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "169eb7144bb423cca0fa995672b390f1823425ca58b720d53fbcdbd23f653bef"
+  },
+  "id": "9vWdyVxZfeMmHMlW",
+  "tags": []
+}
