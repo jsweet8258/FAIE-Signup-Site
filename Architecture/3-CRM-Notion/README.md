@@ -15,12 +15,16 @@ A Notion database in the **AI@DRI Learning Space** workspace. Each row represent
 
 Claude will shape the Notion database through the **@notionhq/notion-mcp-server** — a local MCP server that translates Claude's tool calls into Notion API requests. Same pattern as the n8n bridge, different target.
 
-| Component | Status |
-|-----------|--------|
-| Notion integration (TT3OC) | Created — internal integration with read + update content capabilities |
-| `@notionhq/notion-mcp-server` | Not yet configured in `.claude/` |
-| `NOTION_API_TOKEN` | Not yet stored |
-| Registration database | Not yet created |
+```
+┌──────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────┐
+│ Component                        │ Status                                                                       │
+├──────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────┤
+│ Notion integration (TT3OC)       │ Created — internal integration with read + update content capabilities        │
+│ @notionhq/notion-mcp-server      │ Not yet configured in .claude/                                               │
+│ NOTION_API_TOKEN                 │ Not yet stored                                                               │
+│ Registration database            │ Not yet created                                                              │
+└──────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────┘
+```
 
 Once the MCP server is configured, Claude can:
 
@@ -31,16 +35,20 @@ Once the MCP server is configured, Claude can:
 
 ## Database schema (planned)
 
-| Property | Type | Notes |
-|----------|------|-------|
-| Name | Title | Faculty member's name |
-| Email | Email | Contact email |
-| Department | Select | OSU department |
-| Research Area | Rich text | Free-form research description |
-| Goals | Rich text | What they hope to get from the workshop |
-| Preferred Date | Date | Preferred workshop session |
-| Submitted At | Date | Timestamp from form submission |
-| Status | Select | Registration status (New, Confirmed, etc.) |
+```
+┌─────────────────┬───────────┬────────────────────────────────────────────────┐
+│ Property        │ Type      │ Notes                                          │
+├─────────────────┼───────────┼────────────────────────────────────────────────┤
+│ Name            │ Title     │ Faculty member's name                          │
+│ Email           │ Email     │ Contact email                                  │
+│ Department      │ Select    │ OSU department                                 │
+│ Research Area   │ Rich text │ Free-form research description                 │
+│ Goals           │ Rich text │ What they hope to get from the workshop        │
+│ Preferred Date  │ Date      │ Preferred workshop session                     │
+│ Submitted At    │ Date      │ Timestamp from form submission                 │
+│ Status          │ Select    │ Registration status (New, Confirmed, etc.)     │
+└─────────────────┴───────────┴────────────────────────────────────────────────┘
+```
 
 ## Two Notion integrations, two purposes
 

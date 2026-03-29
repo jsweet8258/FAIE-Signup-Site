@@ -6,12 +6,16 @@ How Claude Code will use the Model Context Protocol (MCP) to create and manage t
 
 **Not yet operational.** The Notion integration exists; the MCP server is not yet configured.
 
-| Component | Status |
-|-----------|--------|
-| Notion integration (TT3OC) | Created in AI@DRI Learning Space, read + update content |
-| `@notionhq/notion-mcp-server` | Not yet added to `.claude/` MCP config |
-| `NOTION_API_TOKEN` | Not yet stored in `.claude/` |
-| Registration database | Not yet created |
+```
+┌──────────────────────────────────┬───────────────────────────────────────────────────────────────┐
+│ Component                        │ Status                                                        │
+├──────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+│ Notion integration (TT3OC)       │ Created in AI@DRI Learning Space, read + update content        │
+│ @notionhq/notion-mcp-server      │ Not yet added to .claude/ MCP config                          │
+│ NOTION_API_TOKEN                 │ Not yet stored in .claude/                                    │
+│ Registration database            │ Not yet created                                               │
+└──────────────────────────────────┴───────────────────────────────────────────────────────────────┘
+```
 
 ## The Two Systems
 
@@ -106,9 +110,13 @@ After adding the config, restart Claude Code to pick up the new MCP server.
 
 ## Runtime vs. Development Traffic
 
-| When | Flow | Purpose |
-|------|------|---------|
-| **Development** | Claude Code → notion-mcp → Notion API | Create/modify database schema, query records |
-| **Production** | n8n workflow → Notion API | Write new registration rows |
+```
+┌───────────────┬───────────────────────────────────────────────┬──────────────────────────────────────────────────┐
+│ When          │ Flow                                          │ Purpose                                          │
+├───────────────┼───────────────────────────────────────────────┼──────────────────────────────────────────────────┤
+│ Development   │ Claude Code → notion-mcp → Notion API         │ Create/modify database schema, query records     │
+│ Production    │ n8n workflow → Notion API                      │ Write new registration rows                      │
+└───────────────┴───────────────────────────────────────────────┴──────────────────────────────────────────────────┘
+```
 
 The MCP server is never involved in production traffic. Once the database is created and the n8n Notion node is configured, the production pipeline writes directly to Notion without any local processes.

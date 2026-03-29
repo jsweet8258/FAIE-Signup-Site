@@ -20,14 +20,23 @@ Same interface as Phase 3: Claude connects to Notion through **notion-mcp** and 
 
 Possible views to create:
 
-| View | Type | Filter | Sort | Purpose |
-|------|------|--------|------|---------|
-| All Registrations | Table | None | Submitted At (desc) | Master list |
-| By Session Date | Table | Preferred Date = [selected] | Name (asc) | RSVP list for a specific workshop |
-| By Department | Board | Group by Department | Name (asc) | Cross-departmental participation overview |
-| New / Unconfirmed | Table | Status = New | Submitted At (asc) | Triage queue for follow-up |
+```
+┌─────────────────────┬─────────┬──────────────────────────────────┬─────────────────────┬────────────────────────────────────────────────┐
+│ View                │ Type    │ Filter                           │ Sort                │ Purpose                                        │
+├─────────────────────┼─────────┼──────────────────────────────────┼─────────────────────┼────────────────────────────────────────────────┤
+│ All Registrations   │ Table   │ None                             │ Submitted At (desc) │ Master list                                    │
+│ By Session Date     │ Table   │ Preferred Date = [selected]      │ Name (asc)          │ RSVP list for a specific workshop              │
+│ By Department       │ Board   │ Group by Department              │ Name (asc)          │ Cross-departmental participation overview       │
+│ New / Unconfirmed   │ Table   │ Status = New                     │ Submitted At (asc)  │ Triage queue for follow-up                     │
+└─────────────────────┴─────────┴──────────────────────────────────┴─────────────────────┴────────────────────────────────────────────────┘
+```
 
 The exact views will be determined once the database is populated and real usage patterns emerge.
+
+## Interface
+
+- **In**: Reads from the FAIE Registration database (Phase 3). No write operations — this is a read-only consumer.
+- **Out**: Notion database views rendered in the Notion UI. Administrators consume these views directly; no data leaves Notion.
 
 ## Dependencies
 

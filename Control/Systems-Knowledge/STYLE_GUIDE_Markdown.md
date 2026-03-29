@@ -81,6 +81,8 @@ Markdown pipe table (avoid):
 
 The tradeoff is maintenance cost. Adjusting column widths in a box table requires touching every row. This cost is acceptable because tables that appear in documentation files change infrequently, and the benefit — a table that is legible everywhere — outweighs the editing overhead.
 
+**Agent-only files.** Markdown files consumed strictly by agents — specifically `CLAUDE.md` and `AGENTS.md` — may use standard Markdown pipe tables. The rationale for box tables is render-context independence: the table must look correct in a terminal, a browser, and an IDE. Agent-only files have exactly one consumer, and that consumer parses pipe tables natively. Pipe tables are also more compact and easier to maintain in files that change frequently as project context evolves.
+
 ASCII tables (`+`, `-`, `|`) are an acceptable alternative when Unicode box-drawing characters are unavailable or impractical. The same principle applies: the table must be inside a fenced code block and must be self-aligning.
 
 The box-drawing characters for reference:

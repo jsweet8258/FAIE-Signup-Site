@@ -63,16 +63,20 @@ Configure the notion-mcp server so Claude can create and manage Notion resources
 
 Use notion-mcp to create the FAIE Registration database with these properties:
 
-| Property | Type | Notes |
-|----------|------|-------|
-| Name | Title | Faculty member's name |
-| Email | Email | Contact email |
-| Department | Select | OSU department |
-| Research Area | Rich text | Free-form research description |
-| Goals | Rich text | What they hope to get from the workshop |
-| Preferred Date | Date | Preferred workshop session |
-| Submitted At | Date | Timestamp from form submission |
-| Status | Select | Registration status (New, Confirmed, etc.) |
+```
+┌─────────────────┬───────────┬────────────────────────────────────────────────┐
+│ Property        │ Type      │ Notes                                          │
+├─────────────────┼───────────┼────────────────────────────────────────────────┤
+│ Name            │ Title     │ Faculty member's name                          │
+│ Email           │ Email     │ Contact email                                  │
+│ Department      │ Select    │ OSU department                                 │
+│ Research Area   │ Rich text │ Free-form research description                 │
+│ Goals           │ Rich text │ What they hope to get from the workshop        │
+│ Preferred Date  │ Date      │ Preferred workshop session                     │
+│ Submitted At    │ Date      │ Timestamp from form submission                 │
+│ Status          │ Select    │ Registration status (New, Confirmed, etc.)     │
+└─────────────────┴───────────┴────────────────────────────────────────────────┘
+```
 
 Confirm the database is shared with the TT3OC integration (required for Claude visibility) and with whatever Notion integration n8n uses for production writes.
 
@@ -172,13 +176,17 @@ This step should be done against real data, not empty schemas — views are best
 
 ## What Gets Modified Where
 
-| Resource | Location | How Claude reaches it | Step |
-|----------|----------|-----------------------|------|
-| MCP config | `.claude/` (local, gitignored) | Direct file edit | 1 |
-| Registration database | Notion (AI@DRI Learning Space) | notion-mcp | 2 |
-| n8n workflow (Code node) | n8n Cloud (remote) | n8n-mcp | 4 |
-| n8n workflow (Notion node) | n8n Cloud (remote) | n8n-mcp | 5 |
-| n8n workflow (activation) | n8n Cloud (remote) | n8n-mcp | 6 |
-| Vercel env var | Vercel dashboard (manual) | Browser / Vercel CLI | 7 |
-| `page.tsx` TODO comment | Local repo → git push | Direct file edit | 7 |
-| Notion database views | Notion (AI@DRI Learning Space) | notion-mcp | 10 |
+```
+┌──────────────────────────────┬────────────────────────────────────────┬─────────────────────────┬──────┐
+│ Resource                     │ Location                               │ How Claude reaches it   │ Step │
+├──────────────────────────────┼────────────────────────────────────────┼─────────────────────────┼──────┤
+│ MCP config                   │ .claude/ (local, gitignored)           │ Direct file edit        │ 1    │
+│ Registration database        │ Notion (AI@DRI Learning Space)         │ notion-mcp              │ 2    │
+│ n8n workflow (Code node)     │ n8n Cloud (remote)                     │ n8n-mcp                 │ 4    │
+│ n8n workflow (Notion node)   │ n8n Cloud (remote)                     │ n8n-mcp                 │ 5    │
+│ n8n workflow (activation)    │ n8n Cloud (remote)                     │ n8n-mcp                 │ 6    │
+│ Vercel env var               │ Vercel dashboard (manual)              │ Browser / Vercel CLI    │ 7    │
+│ page.tsx TODO comment        │ Local repo → git push                  │ Direct file edit        │ 7    │
+│ Notion database views        │ Notion (AI@DRI Learning Space)         │ notion-mcp              │ 10   │
+└──────────────────────────────┴────────────────────────────────────────┴─────────────────────────┴──────┘
+```

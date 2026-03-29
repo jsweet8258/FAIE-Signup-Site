@@ -69,7 +69,6 @@ When Claude (or another agent) reaches an external service through an MCP bridge
 - How it connects (stdio, HTTPS, authentication method)
 - What credentials it needs and where they are stored
 - What Claude can do through this bridge (create, read, update, activate, etc.)
-- What Claude cannot do (limitations, manual-only operations)
 - Provenance: who maintains the bridge tool, where the source lives, whether it is first-party or third-party
 
 These documents are not operational guides. They are knowledge architecture: they ensure that the next person understands how the builder reached the system, not just that the system exists.
