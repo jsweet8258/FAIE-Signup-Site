@@ -127,31 +127,21 @@ No test framework is configured. No local database — form data flows to n8n, t
 | `N8N_API_KEY` | `.claude/n8n-mcp.json` | n8n REST API access |
 | `NOTION_API_TOKEN` | `.claude/` (pending) | Notion API access |
 
-## Systems Knowledge Standards
+## Systems knowledge standard
 
-This project follows the systems knowledge standards in
-`Control/Systems-Knowledge/`. Those standards govern how the
-Architecture/ and Control/ directories are structured, how
-documentation is written, and what obligations the builder has
-to the next maintainer.
+All systems integration work follows the knowledge architecture standard defined in `Control/Systems-Knowledge/`. The entry point is `Control/Systems-Knowledge/knowledge-architecture-guidelines.md`.
 
-Key files:
+- **`Control/Systems-Knowledge/knowledge-architecture-guidelines.md`** defines how to structure a project so that its operational understanding is transferable: repo organization (Architecture/, Control/, live code), README orientation, subsystem documentation for replication, interface scorecards, and the greenfield/retrofit procedure.
+- **`Control/Systems-Knowledge/STYLE_GUIDE_Markdown.md`** defines formatting conventions for all Markdown files: ATX headings, no hard-wrap, Unicode box tables, fenced code blocks with language tags.
+- **`Control/Systems-Knowledge/Project-Exceptions.md`** records project-specific overrides to the standards above. This file is owned by the project, not the template.
 
-- **`Control/Systems-Knowledge/knowledge-architecture-guidelines.md`** —
-  the primary standard. Covers repo structure (separate
-  architecture from operations from code), README orientation,
-  subsystem documentation, development interfaces, implementation
-  plans, interface scorecards, and the requirement to state *why*,
-  not just *what*. Applies to both greenfield and retrofit work.
-- **`Control/Systems-Knowledge/STYLE_GUIDE_Markdown.md`** —
-  formatting conventions for Markdown files.
-- **`Control/Systems-Knowledge/Project-Exceptions.md`** —
-  project-specific overrides to the standards. This file is owned
-  by this project, not the template. Record exceptions here when
-  a standard does not fit this project's needs.
+**Standing directive:** When building, extending, or documenting any system in this project, Claude applies the knowledge architecture guidelines. Every system must have documentation that is load-bearing infrastructure, not a supplement. Document the *why*, not just the *what* or *how*: design rationale, dependency order, tradeoffs, and the constraints that shaped the architecture. The project is not done when the system works; it is done when someone who has never seen it can read the documentation and understand it well enough to maintain it, extend it, or replicate it from scratch. Before acting on an instruction, give a brief first-principles reflection: verify the reasoning holds, and say so directly if an instruction conflicts with another directive or rests on a flawed assumption.
 
-The philosophical foundation for these standards is in the
-Systems-Knowledge-Template repo (not deployed here). The short
-version: a project is not done when the system works. It is done
-when someone who has never seen it can read the repo and
-understand it well enough to maintain, extend, or replicate it.
+Key principles (see knowledge-architecture-guidelines.md for the full set):
+
+1. **Separate architecture from operations from code.** Architecture/ teaches. Control/ governs. Live code runs. Do not mix them.
+2. **Orient before you explain.** A reader should know within thirty seconds what a system is, whether it works, and where to look for depth.
+3. **Document for replication.** If the documentation does not teach someone to rebuild the subsystem from scratch, it teaches operation, not understanding.
+4. **State the why.** Knowing how enables operation. Knowing why enables understanding. Both are required.
+5. **The written requirement.** The builder owes a duty to externalize what they learned. A system that ships without teaching what the builder understood is incomplete.
+6. **First-principles reflection.** Before acting on a directive, verify that its reasoning holds. If it does not, say so directly.
