@@ -85,6 +85,10 @@ Control/
   IMPLEMENTATION_PLAN.md            Step-by-step wiring plan
   URLs/                             Project bookmarks
   z-obsolete/                       Retired control files
+  Systems-Knowledge/                Knowledge architecture standards
+    knowledge-architecture-guidelines.md
+    STYLE_GUIDE_Markdown.md
+    Project-Exceptions.md
 ```
 
 ## Commands
@@ -122,3 +126,32 @@ No test framework is configured. No local database — form data flows to n8n, t
 | `NEXT_PUBLIC_N8N_WEBHOOK_URL` | Vercel | n8n webhook URL for form submissions |
 | `N8N_API_KEY` | `.claude/n8n-mcp.json` | n8n REST API access |
 | `NOTION_API_TOKEN` | `.claude/` (pending) | Notion API access |
+
+## Systems Knowledge Standards
+
+This project follows the systems knowledge standards in
+`Control/Systems-Knowledge/`. Those standards govern how the
+Architecture/ and Control/ directories are structured, how
+documentation is written, and what obligations the builder has
+to the next maintainer.
+
+Key files:
+
+- **`Control/Systems-Knowledge/knowledge-architecture-guidelines.md`** —
+  the primary standard. Covers repo structure (separate
+  architecture from operations from code), README orientation,
+  subsystem documentation, development interfaces, implementation
+  plans, interface scorecards, and the requirement to state *why*,
+  not just *what*. Applies to both greenfield and retrofit work.
+- **`Control/Systems-Knowledge/STYLE_GUIDE_Markdown.md`** —
+  formatting conventions for Markdown files.
+- **`Control/Systems-Knowledge/Project-Exceptions.md`** —
+  project-specific overrides to the standards. This file is owned
+  by this project, not the template. Record exceptions here when
+  a standard does not fit this project's needs.
+
+The philosophical foundation for these standards is in the
+Systems-Knowledge-Template repo (not deployed here). The short
+version: a project is not done when the system works. It is done
+when someone who has never seen it can read the repo and
+understand it well enough to maintain, extend, or replicate it.
