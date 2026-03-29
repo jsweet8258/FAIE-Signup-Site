@@ -59,7 +59,7 @@ Each subsystem directory in Architecture/ gets a README that answers five questi
 4. **What are its interfaces?** — what comes in, what goes out, what format, what protocol
 5. **How would you replicate it?** — step-by-step instructions for someone building the same kind of subsystem in a different project
 
-The fifth question is the one most documentation skips. It is also the one that most directly satisfies the written requirement: the builder owes a duty to externalize what they learned, completely enough that the next person can replicate the work without the builder's presence. (The full rationale is in SYSTEMS_FOUNDATIONS.md in the [Systems-Knowledge-Template](https://github.com/jsweet8258/Systems-Knowledge-Template) repository.) If your documentation does not teach replication, it teaches operation, which is necessary but not sufficient.
+The fifth question is the one most documentation skips. It is also the one that most directly satisfies the written requirement: the builder owes a duty to externalize what they learned, completely enough that the next person can replicate the work without the builder's presence. If your documentation does not teach replication, it teaches operation, which is necessary but not sufficient.
 
 ## 4. Document development interfaces explicitly
 
@@ -106,7 +106,7 @@ Every document in the knowledge architecture should answer *why* at least as oft
 - Why is the Notion integration separate from the n8n integration? (development-time access vs. production-time writes)
 - Why is this directory named this way? (deployment target constraint)
 
-The *what* and *how* enable operation. The *why* enables understanding. Both are required. (The full argument for why understanding requires *why* and not just *how* is in SYSTEMS_FOUNDATIONS.md in the [Systems-Knowledge-Template](https://github.com/jsweet8258/Systems-Knowledge-Template) repository.)
+The *what* and *how* enable operation. The *why* enables understanding. Both are required.
 
 ## Greenfield vs. retrofit
 
