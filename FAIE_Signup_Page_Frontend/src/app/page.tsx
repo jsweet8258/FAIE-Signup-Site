@@ -499,10 +499,10 @@ export default function Home() {
                     <SelectValue placeholder="Select a date" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="march-2026">March 2026</SelectItem>
-                    <SelectItem value="april-2026">April 2026</SelectItem>
                     <SelectItem value="may-2026">May 2026</SelectItem>
-                    <SelectItem value="tbd">To Be Determined</SelectItem>
+                    <SelectItem value="june-2026">June 2026</SelectItem>
+                    <SelectItem value="july-2026">July 2026</SelectItem>
+                    <SelectItem value="future">Future</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
