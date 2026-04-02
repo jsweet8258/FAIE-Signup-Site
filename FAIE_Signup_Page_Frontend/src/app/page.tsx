@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/hooks/use-toast'
 import {
   GraduationCap,
@@ -37,6 +38,7 @@ export default function Home() {
     lastName: '',
     email: '',
     department: '',
+    engagementScope: [] as string[],
     researchArea: '',
     goals: '',
     preferredDate: '',
@@ -70,6 +72,7 @@ export default function Home() {
           lastName: '',
           email: '',
           department: '',
+          engagementScope: [],
           researchArea: '',
           goals: '',
           preferredDate: '',
@@ -487,6 +490,50 @@ export default function Home() {
                   required
                   className="h-12 border-gray-300 focus:border-[#D73F09] focus:ring-[#D73F09]"
                 />
+              </div>
+
+              <div className="space-y-3">
+                <Label className="font-medium" style={{ color: '#423e3c' }}>
+                  I'm interested in FAIE for:
+                </Label>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="scope-individual"
+                      checked={formData.engagementScope.includes('individual')}
+                      onCheckedChange={(checked) => {
+                        setFormData({
+                          ...formData,
+                          engagementScope: checked
+                            ? [...formData.engagementScope, 'individual']
+                            : formData.engagementScope.filter((s) => s !== 'individual'),
+                        })
+                      }}
+                      className="border-gray-300 data-[state=checked]:bg-[#D73F09] data-[state=checked]:border-[#D73F09]"
+                    />
+                    <Label htmlFor="scope-individual" className="text-sm font-normal cursor-pointer" style={{ color: '#423e3c' }}>
+                      A single faculty member or lab
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="scope-unit"
+                      checked={formData.engagementScope.includes('unit')}
+                      onCheckedChange={(checked) => {
+                        setFormData({
+                          ...formData,
+                          engagementScope: checked
+                            ? [...formData.engagementScope, 'unit']
+                            : formData.engagementScope.filter((s) => s !== 'unit'),
+                        })
+                      }}
+                      className="border-gray-300 data-[state=checked]:bg-[#D73F09] data-[state=checked]:border-[#D73F09]"
+                    />
+                    <Label htmlFor="scope-unit" className="text-sm font-normal cursor-pointer" style={{ color: '#423e3c' }}>
+                      An academic Center, School, or Institute
+                    </Label>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">
