@@ -78,7 +78,7 @@ export default function Home() {
     } catch (error) {
       toast({
         title: 'Registration Failed',
-        description: 'Please try again or contact us directly.',
+        description: 'Please contact John.Sweet@oregonstate.edu to RSVP directly.',
         variant: 'destructive',
       })
     } finally {
