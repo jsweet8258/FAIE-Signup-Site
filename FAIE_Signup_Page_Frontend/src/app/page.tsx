@@ -61,8 +61,8 @@ export default function Home() {
 
       if (response.ok) {
         toast({
-          title: 'Registration Successful!',
-          description: 'We\'ll send you workshop details via email soon.',
+          title: 'Thank You for Your Interest!',
+          description: 'Please look for registration confirmation by email.',
         })
         setFormData({
           name: '',
