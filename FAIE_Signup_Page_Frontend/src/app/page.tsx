@@ -33,7 +33,8 @@ import {
 export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     department: '',
     researchArea: '',
@@ -65,7 +66,8 @@ export default function Home() {
           description: 'Please look for registration confirmation by email.',
         })
         setFormData({
-          name: '',
+          firstName: '',
+          lastName: '',
           email: '',
           department: '',
           researchArea: '',
@@ -431,33 +433,46 @@ export default function Home() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="name" className="font-medium" style={{ color: '#423e3c' }}>
-                    Full Name <span className="text-[#D73F09]">*</span>
+                  <Label htmlFor="firstName" className="font-medium" style={{ color: '#423e3c' }}>
+                    First Name <span className="text-[#D73F09]">*</span>
                   </Label>
                   <Input
-                    id="name"
-                    placeholder="Dr. Jane Smith"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    id="firstName"
+                    placeholder="Jane"
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     required
                     className="h-12 border-gray-300 focus:border-[#D73F09] focus:ring-[#D73F09]"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="font-medium" style={{ color: '#423e3c' }}>
-                    Email <span className="text-[#D73F09]">*</span>
+                  <Label htmlFor="lastName" className="font-medium" style={{ color: '#423e3c' }}>
+                    Last Name
                   </Label>
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder="jane.smith@oregonstate.edu"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    required
+                    id="lastName"
+                    placeholder="Smith"
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                     className="h-12 border-gray-300 focus:border-[#D73F09] focus:ring-[#D73F09]"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email" className="font-medium" style={{ color: '#423e3c' }}>
+                  Email <span className="text-[#D73F09]">*</span>
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="jane.smith@oregonstate.edu"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  required
+                  className="h-12 border-gray-300 focus:border-[#D73F09] focus:ring-[#D73F09]"
+                />
               </div>
 
               <div className="space-y-2">
